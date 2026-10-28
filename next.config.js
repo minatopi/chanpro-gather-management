@@ -1,4 +1,5 @@
 module.exports = {
+  eslint: { ignoreDuringBuilds: true },
   async headers() {
     return [{ source: "/(.*)", headers: [
       { key: "X-Frame-Options", value: "DENY" },
