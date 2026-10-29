@@ -54,10 +54,50 @@ export function Dashboard({ go }) {
    ========================================================= */
 const BAN_PRESETS = [["1時間", 60], ["1日", 1440], ["7日", 10080], ["30日", 43200], ["無期限", -1]];
 
+
+function PostHogSection({ user, go }) {
+  const [days, setDays] = useState(30);
+  const { data: d, loading, error, reload } = useLoad(() => api(`/api/admin/posthog?userId=${user.id}&username=${encodeURIComponent(user.username)}&days=${days}`), [user.id, days]);
+  const props = d?.person?.properties || {};
+  const shown = Object.entries(props).filter(([k]) => !k.startsWith("$") || /^\$(geoip_|initial_)/.test(k));
+  const rest = Object.entries(props).filter(([k]) => !shown.some(([a]) => a === k));
+  const label = (k) => k.replace(/^\$/, "").replace(/_/g, " ");
+  return (
+    <section>
+      <div className="sec-title">PostHog ユーザー情報</div>
+      <div className="row" style={{ marginBottom: 12 }}>
+        <Seg value={days} onChange={setDays} options={[[7, "7日"], [30, "30日"], [90, "90日"]]} />
+        <button className="btn sm" onClick={reload}><Icon name="refresh" size={14} /></button>
+        {d?.personUrl && <a className="btn sm" href={d.personUrl} target="_blank" rel="noreferrer">PostHogで開く</a>}
+        <button className="btn sm ghost" onClick={() => go("logs", { username: user.username })}>Axiomのログ</button>
+      </div>
+      {loading && !d ? <Skeleton rows={3} /> : error ? <ErrorBox text={error} /> : <div className="stack">
+        {d.errors?.length > 0 && <div className="notice warn"><Icon name="alert" /><span>一部取得できませんでした: {d.errors.join(" / ")}</span></div>}
+        {!d.person && !d.stats?.events && <div className="notice info"><Icon name="info" />このIDのPersonがPostHogにありません。フロントで posthog.identify(user.id) を呼ぶと表示されます。</div>}
+        {d.stats && <div className="row">
+          <Badge tone="blue">イベント {Number(d.stats.events || 0).toLocaleString()}</Badge>
+          <Badge tone="gray">セッション {Number(d.stats.sessions || 0).toLocaleString()}</Badge>
+          {d.stats.last_seen && <Badge tone="green" dot>最終 {ago(d.stats.last_seen)}</Badge>}
+          {d.person?.created_at && <Badge tone="gray">Person作成 {fmtFull(d.person.created_at)}</Badge>}
+        </div>}
+        {shown.length > 0 && <div><div className="sub" style={{ marginBottom: 6 }}>Personのプロパティ</div>
+          <div className="table-wrap"><table><tbody>{shown.map(([k, v]) => <tr key={k}><td style={{ width: 150, color: "var(--muted)" }}>{label(k)}</td><td className="mono">{typeof v === "object" ? JSON.stringify(v) : String(v)}</td></tr>)}</tbody></table></div></div>}
+        {rest.length > 0 && <details><summary className="sub" style={{ cursor: "pointer" }}>その他のプロパティ({rest.length})</summary><pre className="mono" style={{ whiteSpace: "pre-wrap", background: "var(--bg-soft)", padding: 10, borderRadius: 10 }}>{JSON.stringify(Object.fromEntries(rest), null, 2)}</pre></details>}
+        {d.ips?.length > 0 && <div><div className="sub" style={{ marginBottom: 6 }}>アクセス元IP(新しい順)</div>
+          <div className="table-wrap"><table><tbody>{d.ips.map((r) => <tr key={r.ip}><td className="mono">{r.ip}</td><td>{[r.country, r.city].filter(Boolean).join(" / ") || "-"}</td><td className="sub" style={{ textAlign: "right" }}>{ago(r.last_seen)} ・{r.n}回</td></tr>)}</tbody></table></div></div>}
+        {d.devices?.length > 0 && <div><div className="sub" style={{ marginBottom: 6 }}>使用環境</div>
+          {d.devices.map((r, i) => <div key={i} className="row" style={{ marginBottom: 4 }}><Badge tone="violet">{r.device || "不明"}</Badge><span>{[r.browser, r.os].filter(Boolean).join(" / ") || "-"}</span><span className="sub" style={{ marginLeft: "auto" }}>{ago(r.last_seen)} ・{r.n}回</span></div>)}</div>}
+        {d.top?.length > 0 && <div><div className="sub" style={{ marginBottom: 6 }}>よく見たページ</div><div className="bars">{d.top.slice(0, 8).map((r) => <div key={r.path || "root"} className="bar-row" style={{ gridTemplateColumns: "1fr 44px" }}><span className="mono">{r.path || "/"}</span><b style={{ textAlign: "right" }}>{r.views}</b></div>)}</div></div>}
+        {d.recent?.length > 0 && <details><summary className="sub" style={{ cursor: "pointer" }}>最近のアクセス履歴({d.recent.length}件)</summary>
+          <div style={{ marginTop: 8 }}>{d.recent.map((r, i) => <div key={i} className="row sub" style={{ gap: 8, flexWrap: "nowrap" }}><span style={{ width: 92, flex: "none" }}>{fmt(r.timestamp)}</span><span className="mono grow">{r.path || r.url}</span><span className="mono">{r.ip || ""}</span></div>)}</div></details>}
+      </div>}
+    </section>
+  );
+}
+
 function UserPanel({ user: initial, onClose, onChanged, go }) {
   const { toast, confirm } = useUI();
   const [u, setU] = useState(initial); const [busy, setBusy] = useState(false);
-  const [ph, setPh] = useState(null); const [phLoading, setPhLoading] = useState(false);
   const banned = isBanned(u);
   const patch = async (p, msg) => {
     setBusy(true);
@@ -66,10 +106,6 @@ function UserPanel({ user: initial, onClose, onChanged, go }) {
   };
   const ban = async (label, minutes) => {
     if (await confirm({ title: `${u.username} をBANしますか?`, body: `期間: ${label}\nこのアカウントのみBANします(IP・端末は「BAN管理」から)。`, danger: true, okText: "BANする" })) patch({ banMinutes: minutes }, "BANしました");
-  };
-  const loadPh = async () => {
-    setPhLoading(true);
-    try { setPh(await api(`/api/admin/posthog?userId=${u.id}&username=${encodeURIComponent(u.username)}&days=7`)); } catch (e) { setPh({ error: e.message }); } finally { setPhLoading(false); }
   };
   return (
     <Drawer onClose={onClose} header={<><Avatar name={u.username} src={u.icon_url} size={44} /><div style={{ minWidth: 0 }}><div style={{ fontWeight: 800, fontSize: 16 }}>{u.username}</div><div className="mono sub" style={{ cursor: "pointer" }} title="クリックでコピー" onClick={() => { navigator.clipboard?.writeText(u.id); toast("IDをコピーしました"); }}>{u.id}</div></div></>}>
@@ -99,17 +135,7 @@ function UserPanel({ user: initial, onClose, onChanged, go }) {
         <div className="sec-title">ポイント・状態</div>
         <div className="row"><Badge tone="blue">{(u.points ?? 0).toLocaleString()} pt</Badge><Badge tone="gray">BAN {u.ban_count || 0}回</Badge></div>
       </section>
-      <section>
-        <div className="sec-title">アクセス履歴(PostHog・7日)</div>
-        {!ph && <div className="row"><button className="btn" onClick={loadPh} disabled={phLoading}>{phLoading ? "読み込み中…" : "読み込む"}</button><button className="btn ghost" onClick={() => go("logs", { username: u.username })}>Axiomのログを見る</button></div>}
-        {ph?.error && <ErrorBox text={ph.error} />}
-        {ph && !ph.error && <div className="stack">
-          <div className="sub">よく見たページ</div>
-          {ph.top?.length ? <div className="bars">{ph.top.slice(0, 8).map((r) => <div key={r.path} className="bar-row" style={{ gridTemplateColumns: "1fr 44px" }}><span className="mono">{r.path || "/"}</span><b style={{ textAlign: "right" }}>{r.views}</b></div>)}</div> : <div className="sub">記録なし(フロントで posthog.identify が必要です)</div>}
-          <div className="sub" style={{ marginTop: 6 }}>最近の履歴</div>
-          {(ph.recent || []).slice(0, 15).map((r, i) => <div key={i} className="row sub" style={{ gap: 8 }}><span style={{ width: 92, flex: "none" }}>{fmt(r.timestamp)}</span><span className="mono grow">{r.path || r.url}</span></div>)}
-        </div>}
-      </section>
+      <PostHogSection user={u} go={go} />
     </Drawer>
   );
 }
