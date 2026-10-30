@@ -14,9 +14,9 @@ async function loadLand(mode) {
   const j = await r.json();
   return (cache[mode] = mode === "japan" ? j : feature(j, j.objects.countries));
 }
-const JP_BOX = { type: "Feature", geometry: { type: "Polygon", coordinates: [[[122.5, 24], [146, 24], [146, 45.8], [122.5, 45.8], [122.5, 24]]] } };
+const JP_BOX = { type: "Feature", geometry: { type: "Polygon", coordinates: [[[129.3, 30.8], [146, 30.8], [146, 45.8], [129.3, 45.8], [129.3, 30.8]]] } };
 const W = 900;
-const H = { japan: 640, world: 470 };
+const H = { japan: 780, world: 470 };
 const featName = (f, mode) => (mode === "japan" ? f.properties?.nam_ja || f.properties?.nam : f.properties?.name) || "";
 const lerp = (a, b, t) => Math.round(a + (b - a) * t);
 const shade = (t) => `rgb(${lerp(238, 47, t)},${lerp(242, 91, t)},${lerp(255, 255, t)})`;
