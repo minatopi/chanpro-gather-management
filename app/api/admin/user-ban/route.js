@@ -7,7 +7,7 @@ export const POST = guard(async (req) => {
   const b = await req.json();
   const username = String(b.username || "").trim();
   if (!username || username.length > 100) return fail("ユーザー名を入力してください");
-  const plan = await planUserBan({ username, withIp: b.withIp !== false, withDevice: b.withDevice !== false, cascade: b.cascade !== false });
+  const plan = await planUserBan({ username, withIp: b.withIp !== false, withDevice: b.withDevice !== false, cascade: b.cascade !== false, ipSource: ["both", "posthog", "axiom"].includes(b.ipSource) ? b.ipSource : "both" });
   if (b.dryRun) return NextResponse.json({ plan: { ...plan, devices: plan.devices.map((d) => d.slice(0, 8) + "…") } });
   const minutes = Number(b.minutes);
   if (!Number.isFinite(minutes) || minutes < 0 || minutes > 525600) return fail("BAN時間が不正です");

@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
-import { api, fmt, fmtFull, ago, remaining, isBanned, typeInfo, Icon, Badge, Avatar, Switch, Seg, Empty, Skeleton, ErrorBox, SearchBox, Drawer, useUI, useLoad, useDebounced } from "./ui";
+import { GeoPanel } from "./geomap";
+import { api, fmt, fmtFull, ago, remaining, isBanned, typeInfo, STATUS_TONE, Icon, Badge, Avatar, Switch, Seg, Empty, Skeleton, ErrorBox, SearchBox, Drawer, useUI, useLoad, useDebounced } from "./ui";
 
 /* =========================================================
    ダッシュボード
@@ -37,6 +38,12 @@ export function Dashboard({ go }) {
           <div className="row"><Badge tone={s[k] === false ? "red" : "green"} dot>{s[k] === false ? "停止中" : "稼働中"}</Badge><button className="btn sm" onClick={() => go("settings")}>変更</button></div>
         </div>
       ))}
+    </div>
+    <div className="card card-pad">
+      <div className="card-head"><div><h2>機能の状況</h2><div className="sub">「機能ステータス」で記録した最新の状態</div></div><button className="btn sm" onClick={() => go("status")}>記録・履歴</button></div>
+      {!d.featureStatus ? <div className="sub">Axiomを読み込めないため表示できません</div>
+        : !d.featureStatus.length ? <div className="row"><Badge tone="green" dot>記録なし(すべて通常)</Badge></div>
+        : <div className="row">{d.featureStatus.map((e) => <span key={e.feature} title={e.message || ""} className="row" style={{ gap: 6 }}><b>{e.feature}</b><Badge tone={STATUS_TONE[e.status] || "gray"} dot>{e.status}</Badge><span className="sub">{ago(e._time)}</span></span>)}</div>}
     </div>
     <div className="card card-pad">
       <div className="card-head"><div><h2>直近24時間のアクティビティ</h2><div className="sub">Axiomに保存されたログの集計</div></div><button className="btn sm" onClick={reload}><Icon name="refresh" size={14} />更新</button></div>
@@ -174,7 +181,7 @@ const DURATIONS = [["1時間", 60], ["1日", 1440], ["7日", 10080], ["30日", 4
 
 function UserBanCard({ initialUsername, onDone }) {
   const { toast, confirm } = useUI();
-  const [f, setF] = useState({ username: initialUsername || "", minutes: 1440, reason: "", withIp: true, withDevice: true, cascade: true });
+  const [f, setF] = useState({ username: initialUsername || "", minutes: 1440, reason: "", withIp: true, withDevice: true, cascade: true, ipSource: "both" });
   const [plan, setPlan] = useState(null); const [busy, setBusy] = useState(false); const [err, setErr] = useState("");
   const set = (k, v) => { setF((p) => ({ ...p, [k]: v })); setPlan(null); setErr(""); };
   const call = async (dryRun) => { setBusy(true); setErr(""); try { return await api("/api/admin/user-ban", "POST", { ...f, minutes: Number(f.minutes), dryRun }); } finally { setBusy(false); } };
@@ -197,7 +204,8 @@ function UserBanCard({ initialUsername, onDone }) {
         <div className="field"><label>理由(任意)</label><input className="input" value={f.reason} onChange={(e) => set("reason", e.target.value)} placeholder="スパム投稿 など" /></div>
       </div>
       <div className="stack">
-        <Opt k="withIp" title="過去30日のIPもBAN" desc="Axiomのログイン・アクセス記録から取得します" />
+        <Opt k="withIp" title="過去30日のIPもBAN" desc="PostHogのPerson(アクセス履歴)とAxiomのログからIPを集めます" />
+        {f.withIp && <div className="row" style={{ paddingLeft: 4 }}><span className="sub">IPの取得元</span><Seg value={f.ipSource} onChange={(v) => set("ipSource", v)} options={[["both", "PostHog + Axiom"], ["posthog", "PostHogのPerson"], ["axiom", "Axiomのみ"]]} /></div>}
         <Opt k="withDevice" title="端末をBAN" desc="この端末からの新規作成・ログインを止めます" />
         <Opt k="cascade" title="同じ端末のアカウントも芋づる式にBAN" desc="共有端末の別アカウントも順にたどります(最大50件)" />
       </div>
@@ -209,7 +217,7 @@ function UserBanCard({ initialUsername, onDone }) {
       {plan && (
         <div className="stack" style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--line)" }}>
           <div><div className="sec-title">アカウント({plan.accounts.length})</div>{plan.accounts.map((a) => <span key={a.id} className="chip">{a.username}</span>)}</div>
-          <div><div className="sec-title">IP({plan.ips.length})</div>{plan.ips.length ? plan.ips.map((ip) => <span key={ip} className="chip">{ip}</span>) : <span className="sub">なし</span>}</div>
+          <div><div className="sec-title">IP({plan.ips.length})</div>{plan.ipDetails?.length ? plan.ipDetails.map((x) => <div key={x.ip} className="row" style={{ gap: 8, margin: "3px 0" }}><span className="chip" style={{ margin: 0 }}>{x.ip}</span><span className="sub">{[x.country, x.city].filter(Boolean).join(" / ")}</span>{x.sources.map((src) => <Badge key={src} tone={src === "PostHog" ? "violet" : "blue"}>{src}</Badge>)}{x.last_seen && <span className="sub">{ago(x.last_seen)}</span>}</div>) : <span className="sub">なし</span>}</div>
           <div><div className="sec-title">端末({plan.devices.length})</div>{plan.devices.length ? plan.devices.map((d) => <span key={d} className="chip">{d}</span>) : <span className="sub">なし</span>}</div>
           {plan.warnings.map((w, i) => <div key={i} className="notice warn"><Icon name="alert" />{w}</div>)}
           <div className="notice info"><Icon name="info" />共有Wi-Fiや携帯回線のIPをBANすると、無関係な人も巻き込みます。</div>
@@ -316,7 +324,7 @@ export function Logs({ params }) {
   const rows = data?.rows || [];
   return <>
     <div className="row">
-      <Seg value={kind} onChange={setKind} options={[["login", "ログイン"], ["access", "アクセス"], ["ip", "IP・端末制限"]]} />
+      <Seg value={kind} onChange={setKind} options={[["login", "ログイン"], ["access", "アクセス"], ["ip", "IP・端末制限"], ["status", "機能ステータス"]]} />
       <SearchBox value={text} onChange={setText} placeholder="ユーザー名で絞り込み" />
       <select className="select" style={{ width: 140 }} value={hours} onChange={(e) => setHours(e.target.value)}>{[[1, "直近1時間"], [24, "直近24時間"], [72, "直近3日"], [168, "直近7日"], [720, "直近30日"]].map(([h, l]) => <option key={h} value={h}>{l}</option>)}</select>
       <label className="row sub" style={{ gap: 8 }}><Switch checked={auto} onChange={setAuto} />自動更新</label>
@@ -326,13 +334,13 @@ export function Logs({ params }) {
     {loading && !data ? <Skeleton rows={6} /> : !rows.length ? <div className="card"><Empty icon="list" text="該当するログがありません" /></div> : (
       <div className="table-wrap"><table>
         <thead><tr><th>時刻</th><th>種別</th><th>ユーザー</th><th>IP</th><th>詳細</th></tr></thead>
-        <tbody>{rows.map((r, i) => { const [label, tone] = typeInfo(r.type); return (
+        <tbody>{rows.map((r, i) => { const [label, tone] = r.type === "feature_status" ? [`${r.feature || "?"}:${r.status || ""}`, STATUS_TONE[r.status] || "gray"] : typeInfo(r.type); return (
           <tr key={i}>
             <td style={{ whiteSpace: "nowrap" }} title={fmtFull(r._time)}>{fmt(r._time)}</td>
             <td><Badge tone={tone}>{label}</Badge></td>
             <td>{r.username || ""}</td>
             <td className="mono">{r.ip || ""}</td>
-            <td className="sub mono" style={{ maxWidth: 360 }}>{[r.action && `action=${r.action}`, r.page && `page=${r.page}`, r.reason, r.key && `${r.key}=${r.value}`].filter(Boolean).join("  ")}</td>
+            <td className="sub mono" style={{ maxWidth: 360 }}>{[r.action && `action=${r.action}`, r.page && `page=${r.page}`, r.message, r.reason, r.key && `${r.key}=${r.value}`].filter(Boolean).join("  ")}</td>
           </tr>); })}</tbody>
       </table></div>
     )}
@@ -372,5 +380,79 @@ export function Settings() {
     <Control title="ログイン" desc="停止すると一般ユーザーはログインできません(ログイン済みセッションはそのまま使えます)" enabledKey="login_enabled" msgKey="login_disabled_message" s={s} put={put} />
     <Control title="新規アカウント作成" desc="停止すると新しいアカウントを作れません" enabledKey="register_enabled" msgKey="register_disabled_message" s={s} put={put} />
     <div className="notice info"><Icon name="info" />変更はGather APIに即時反映されます。停止中も admin / developer はログインできます。</div>
+  </>;
+}
+
+
+/* =========================================================
+   アクセスマップ(PostHog GeoIP)
+   ========================================================= */
+export function Geo({ go }) {
+  const [mode, setMode] = useState("japan"); const [days, setDays] = useState(30); const [anon, setAnon] = useState(true);
+  const { data, loading, error, reload } = useLoad(() => api(`/api/admin/geo?days=${days}`), [days]);
+  const rows = (data?.rows || []).filter((r) => anon || r.username);
+  const total = rows.reduce((a, r) => a + r.n, 0); const users = new Set(rows.map((r) => r.uid)).size;
+  return <>
+    <div className="row">
+      <Seg value={mode} onChange={setMode} options={[["japan", "日本(都道府県)"], ["world", "世界"]]} />
+      <Seg value={days} onChange={setDays} options={[[7, "7日"], [30, "30日"], [90, "90日"]]} />
+      <label className="row sub" style={{ gap: 8 }}><Switch checked={anon} onChange={setAnon} />匿名アクセスを含める</label>
+      <button className="btn" onClick={reload}><Icon name="refresh" size={15} />更新</button>
+      {data && <span className="sub" style={{ marginLeft: "auto" }}>{total.toLocaleString()}アクセス / {users}人(ユーザー)</span>}
+    </div>
+    <ErrorBox text={error} />
+    {loading && !data ? <Skeleton rows={6} /> : data && <GeoPanel rows={rows} mode={mode} onOpenUser={(name) => go("users", { q: name })} />}
+  </>;
+}
+
+/* =========================================================
+   機能ステータス(Axiomにログを残す)
+   ========================================================= */
+const FEATURE_LIST = ["いいね", "リポスト", "ブックマーク", "投稿", "返信", "DM", "フォロー", "通知", "チャット", "ポイント・スタンプ", "画像アップロード", "アンケート", "ログイン", "新規アカウント作成"];
+const STATUS_LIST = ["停止", "復旧", "不具合", "調査中", "メンテナンス"];
+export function Status() {
+  const { toast } = useUI();
+  const [f, setF] = useState({ feature: "いいね", custom: "", status: "停止", message: "" }); const [busy, setBusy] = useState(false);
+  const { data, loading, error, reload } = useLoad(() => api("/api/admin/status-log"));
+  const feature = f.feature === "__other" ? f.custom.trim() : f.feature;
+  const submit = async () => {
+    setBusy(true);
+    try { await api("/api/admin/status-log", "POST", { feature, status: f.status, message: f.message }); toast(`Axiomに記録しました: ${feature} ${f.status}`); setF({ ...f, message: "" }); setTimeout(reload, 1800); }
+    catch (e) { toast(e.message, "err"); } finally { setBusy(false); }
+  };
+  const quick = (feat, status) => setF({ feature: FEATURE_LIST.includes(feat) ? feat : "__other", custom: feat, status, message: "" });
+  return <>
+    <div className="card card-pad">
+      <div className="card-head"><div><h2>機能ステータスを記録</h2><div className="sub">「いいねが停止しました」「復旧しました」などをAxiomにログとして残します(機能そのものは操作しません)</div></div></div>
+      <div className="grid g3" style={{ marginBottom: 12 }}>
+        <div className="field"><label>機能</label>
+          <select className="select" value={f.feature} onChange={(e) => setF({ ...f, feature: e.target.value })}>{FEATURE_LIST.map((x) => <option key={x}>{x}</option>)}<option value="__other">その他(自由入力)</option></select></div>
+        {f.feature === "__other" ? <div className="field"><label>機能名</label><input className="input" value={f.custom} onChange={(e) => setF({ ...f, custom: e.target.value })} placeholder="例: ランキング" /></div> : <div />}
+        <div className="field"><label>状態</label><Seg value={f.status} onChange={(v) => setF({ ...f, status: v })} options={STATUS_LIST.map((x) => [x, x])} /></div>
+      </div>
+      <div className="field"><label>メッセージ(任意・300文字まで)</label><input className="input" value={f.message} onChange={(e) => setF({ ...f, message: e.target.value })} placeholder="例: データベース障害のため一時停止 / 原因を修正して復旧" /></div>
+      <div className="row" style={{ marginTop: 14 }}>
+        <button className="btn primary" disabled={busy || !feature} onClick={submit}>{busy ? "記録中…" : `「${feature || "?"}」を「${f.status}」として記録`}</button>
+      </div>
+    </div>
+    <div className="card card-pad">
+      <div className="card-head"><div><h2>現在の状況</h2><div className="sub">機能ごとの最新の記録</div></div><button className="btn sm" onClick={reload}><Icon name="refresh" size={14} />更新</button></div>
+      <ErrorBox text={error} />
+      {loading && !data ? <Skeleton rows={3} /> : !data?.current?.length ? <Empty icon="activity" text="まだ記録がありません" /> : (
+        <div className="grid g3">{data.current.map((e) => (
+          <div key={e.feature} className="check" style={{ alignItems: "flex-start" }}>
+            <div style={{ minWidth: 0 }}><b>{e.feature}</b><div className="row" style={{ gap: 6, marginTop: 4 }}><Badge tone={STATUS_TONE[e.status] || "gray"} dot>{e.status}</Badge><span className="sub">{ago(e._time)}</span></div>{e.message && <span style={{ display: "block", marginTop: 4 }}>{e.message}</span>}</div>
+            <button className="btn sm" onClick={() => quick(e.feature, e.status === "復旧" ? "停止" : "復旧")}>{e.status === "復旧" ? "停止を記録" : "復旧を記録"}</button>
+          </div>))}</div>)}
+    </div>
+    <div className="card card-pad">
+      <div className="card-head"><h2>履歴</h2></div>
+      {loading && !data ? <Skeleton rows={4} /> : !data?.events?.length ? <Empty icon="list" text="履歴はありません" /> : (
+        <div className="stack">{data.events.slice(0, 60).map((e, i) => (
+          <div key={i} className="row" style={{ gap: 10, flexWrap: "nowrap", alignItems: "flex-start" }}>
+            <span className="sub" style={{ width: 96, flex: "none" }} title={fmtFull(e._time)}>{fmt(e._time)}</span>
+            <Badge tone={STATUS_TONE[e.status] || "gray"} dot>{e.status}</Badge><b>{e.feature}</b><span className="sub grow">{e.message}</span>
+          </div>))}</div>)}
+    </div>
   </>;
 }

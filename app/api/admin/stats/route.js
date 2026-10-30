@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { guard } from "@/lib/api";
 import { db } from "@/lib/db";
 import { axiomQuery } from "@/lib/axiom";
+import { loadStatus } from "@/lib/status";
 
 const safeCount = async (q) => {
   try { const { count, error } = await q; if (error) throw error; return count || 0; } catch { return null; }
@@ -27,5 +28,8 @@ export const GET = guard(async () => {
     activity = await axiomQuery(`['${ds}'] | where _time > ago(24h) | summarize n=count() by type | order by n desc | take 12`);
   } catch (e) { activityError = e.message; }
 
-  return NextResponse.json({ users, verified, banned, openReports, openUserReports, ipBans, settings, activity, activityError });
+  let featureStatus = null;
+  try { featureStatus = (await loadStatus(30)).current; } catch { /* Axiom未設定でも表示は続行 */ }
+
+  return NextResponse.json({ users, verified, banned, openReports, openUserReports, ipBans, settings, activity, activityError, featureStatus });
 });

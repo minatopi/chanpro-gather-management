@@ -6,6 +6,7 @@ import { axiomQuery } from "@/lib/axiom";
 const TYPES = {
   login: ["login_success", "login_failed", "register_created", "login_blocked", "register_blocked"],
   access: ["access"],
+  status: ["feature_status"],
   ip: ["ip_banned_request", "device_banned_request", "ip_rate_limited", "admin_ip_ban", "admin_ip_unban", "admin_user_ban", "admin_user_unban"],
 };
 

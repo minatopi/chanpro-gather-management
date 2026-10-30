@@ -34,8 +34,9 @@ export const isBanned = (u) => u?.ban_until && new Date(u.ban_until).getTime() >
 export const TYPE_INFO = {
   login_success: ["ログイン成功", "green"], login_failed: ["ログイン失敗", "red"], login_blocked: ["ログイン停止中", "amber"],
   register_created: ["新規作成", "blue"], register_blocked: ["新規作成停止中", "amber"], access: ["アクセス", "gray"],
-  ip_banned_request: ["IP BAN遮断", "red"], device_banned_request: ["端末BAN遮断", "red"], ip_rate_limited: ["レート制限", "amber"],
+  feature_status: ["機能ステータス", "violet"], ip_banned_request: ["IP BAN遮断", "red"], device_banned_request: ["端末BAN遮断", "red"], ip_rate_limited: ["レート制限", "amber"],
 };
+export const STATUS_TONE = { 停止: "red", 復旧: "green", 不具合: "amber", 調査中: "blue", メンテナンス: "violet" };
 export function typeInfo(t) {
   if (TYPE_INFO[t]) return TYPE_INFO[t];
   if (String(t).startsWith("admin_")) return ["管理: " + String(t).slice(6), "violet"];
