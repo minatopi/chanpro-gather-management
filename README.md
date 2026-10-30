@@ -23,6 +23,7 @@ Next.js(App Router)製。Vercelに【新しいプロジェクト】としてデ�
 | `IP_HASH_SECRET` | ✅ | **Gather APIと同じ値**。違うとIP BANが効きません。API側が未設定で `SUPABASE_SERVICE_ROLE_KEY` を使っている場合も、同じ状態にしてください |
 | `AXIOM_TOKEN` | ✅ | Axiom のAPIトークン。対象データセットの **Query(read)** と **Ingest** の両方の権限が必要 |
 | `AXIOM_DATASET` | 任意 | データセット名(既定 `chanpro`)。Gather APIと同じにする |
+| `STATUS_FEED_KEY` | 任意 | 機能ステータス閲覧用API(`/api/status-feed`)のキー。`status-viewer.html` から使う場合に設定(ランダムな長い文字列) |
 | `POSTHOG_PERSONAL_API_KEY` | 任意 | PostHog の Personal API key(Query read権限)。送信用の `phc_...` とは別物。ユーザー別アクセス先の表示に使用 |
 | `POSTHOG_PROJECT_ID` | 任意 | PostHog のプロジェクトID(URLの `/project/12345` の数字) |
 | `POSTHOG_APP_HOST` | 任意 | 既定 `https://us.posthog.com`。EUなら `https://eu.posthog.com`(取り込み用 `us.i.posthog.com` ではありません) |
@@ -76,6 +77,12 @@ PostHogはPerson(= SupabaseのユーザーID)のイベントからIPを集め、
 - Gather API側から自動で残したい場合は、API内で次のように呼べます:
   `await axiomLog("feature_status", ip, { feature: "いいね", status: "停止", message: "原因" });`
 - Axiomのトークンには Ingest 権限が必要です。記録が検索できるまで数秒かかることがあります
+
+## 機能ステータス閲覧HTML(status-viewer.html)
+
+別ファイルの `status-viewer.html` をブラウザで開き、次のどちらかを入力すると、機能ステータスのログを表示します。
+- **管理サイトAPI**(推奨): URL に `https://(管理サイト)/api/status-feed`、キーに環境変数 `STATUS_FEED_KEY` の値
+- **Axiom直接**: Axiomのトークン(Query権限)とデータセット名。ブラウザからAxiomに直接つなぐため、CORSで拒否される場合があります(その場合は管理サイトAPIを使用)
 
 ## 補足
 
