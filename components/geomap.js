@@ -51,10 +51,23 @@ export function GeoPanel({ rows, mode, onOpenUser }) {
   }, [rows, mode, land]);
 
   const { path, projection } = useMemo(() => {
-    const h = H[mode];
-    const proj = mode === "japan" ? geoMercator().fitExtent([[10, 10], [W - 10, h - 10]], JP_BOX) : geoNaturalEarth1().fitExtent([[10, 10], [W - 10, h - 10]], { type: "Sphere" });
-    return { projection: proj, path: geoPath(proj) };
-  }, [mode]);
+  const h = H[mode];
+
+  const proj = mode === "japan"
+    ? geoMercator().fitExtent(
+        [[0, 0], [W, h]],
+        {
+          type: "FeatureCollection",
+          features: land?.features || []
+        }
+      )
+    : geoNaturalEarth1().fitExtent(
+        [[10, 10], [W - 10, h - 10]],
+        { type: "Sphere" }
+      );
+
+  return { projection: proj, path: geoPath(proj) };
+}, [mode, land]);
 
   const maxPt = Math.max(1, ...data.points.map((p) => p.n));
   const shownUsers = useMemo(() => {
