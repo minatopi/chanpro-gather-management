@@ -1,6 +1,6 @@
 
 export async function GET() {
-  const key = process.env.MITERL_API;
+  const key = process.env.miterl_api;
 
   if (!key) {
     return Response.json(
