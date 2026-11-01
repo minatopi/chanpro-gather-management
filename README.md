@@ -23,6 +23,7 @@ Next.js(App Router)製。Vercelに【新しいプロジェクト】としてデ�
 | `IP_HASH_SECRET` | ✅ | **Gather APIと同じ値**。違うとIP BANが効きません。API側が未設定で `SUPABASE_SERVICE_ROLE_KEY` を使っている場合も、同じ状態にしてください |
 | `AXIOM_TOKEN` | ✅ | Axiom のAPIトークン。対象データセットの **Query(read)** と **Ingest** の両方の権限が必要 |
 | `AXIOM_DATASET` | 任意 | データセット名(既定 `chanpro`)。Gather APIと同じにする |
+| `ADMIN_POST_USER_IDS` | 任意 | 管理サイトから投稿できるアカウントのID(カンマ区切り)。未設定なら `04dd75ae-dd2e-4fe4-ade1-fc19a2f65b06` のみ。ここに無いIDでは投稿できません |
 | `STATUS_FEED_KEY` | 任意 | 機能ステータス閲覧用API(`/api/status-feed`)のキー。`status-viewer.html` から使う場合に設定(ランダムな長い文字列) |
 | `POSTHOG_PERSONAL_API_KEY` | 任意 | PostHog の Personal API key(Query read権限)。送信用の `phc_...` とは別物。ユーザー別アクセス先の表示に使用 |
 | `POSTHOG_PROJECT_ID` | 任意 | PostHog のプロジェクトID(URLの `/project/12345` の数字) |
@@ -83,6 +84,18 @@ PostHogはPerson(= SupabaseのユーザーID)のイベントからIPを集め、
 別ファイルの `status-viewer.html` をブラウザで開き、次のどちらかを入力すると、機能ステータスのログを表示します。
 - **管理サイトAPI**(推奨): URL に `https://(管理サイト)/api/status-feed`、キーに環境変数 `STATUS_FEED_KEY` の値
 - **Axiom直接**: Axiomのトークン(Query権限)とデータセット名。ブラウザからAxiomに直接つなぐため、CORSで拒否される場合があります(その場合は管理サイトAPIを使用)
+
+## 投稿(管理アカウントとして)
+
+「投稿」画面から、許可したアカウント(既定 `04dd75ae-dd2e-4fe4-ade1-fc19a2f65b06`)として投稿できます。
+- 内容・画像URL・限定投稿(認証済みアカウントのみ有効)・フォロワー通知を指定。投稿前に確認ダイアログが出ます
+- 最近の投稿の一覧と、削除ができます(許可アカウントの投稿のみ)
+- 操作はAxiomに `admin_post` / `admin_post_delete` として記録されます
+- 任意のアカウントになりすませないよう、投稿可能なIDは `ADMIN_POST_USER_IDS` の許可リストに限定しています
+
+## スマホ対応
+
+画面幅640px以下で、ナビは上部の横スクロール、モーダルは下からのシート、詳細パネルは全幅、表は不要な列を隠して横スクロールになります。入力欄は16pxでiOSの自動ズームを防ぎます。地図は、拡大前は1本指でページをスクロール、2本指ピンチまたは＋/－ボタンで拡大し、拡大後は1本指で移動できます。
 
 ## 補足
 

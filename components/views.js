@@ -160,13 +160,13 @@ export function Users({ go, params }) {
     <ErrorBox text={error} />
     {loading && !data ? <Skeleton rows={6} /> : !users.length ? <div className="card"><Empty icon="users" text="該当するユーザーがいません" /></div> : (
       <div className="table-wrap"><table>
-        <thead><tr><th>ユーザー</th><th>権限</th><th>状態</th><th style={{ textAlign: "right" }}>ポイント</th></tr></thead>
+        <thead><tr><th>ユーザー</th><th>権限</th><th>状態</th><th className="hide-sm" style={{ textAlign: "right" }}>ポイント</th></tr></thead>
         <tbody>{users.map((u) => (
           <tr key={u.id} className="click" onClick={() => setSel(u)}>
             <td><div className="row" style={{ gap: 12, flexWrap: "nowrap" }}><Avatar name={u.username} src={u.icon_url} /><b>{u.username}</b>{u.verified && <span style={{ color: "var(--brand)", display: "inline-flex" }} title="公式バッジ"><Icon name="badge" size={16} /></span>}</div></td>
             <td><Badge tone={u.role === "developer" ? "violet" : u.role === "admin" ? "blue" : "gray"}>{u.role}</Badge></td>
             <td>{isBanned(u) ? <Badge tone="red" dot>BAN中 {remaining(u.ban_until).text}</Badge> : <Badge tone="green" dot>通常</Badge>}</td>
-            <td style={{ textAlign: "right" }}>{(u.points ?? 0).toLocaleString()}</td>
+            <td className="hide-sm" style={{ textAlign: "right" }}>{(u.points ?? 0).toLocaleString()}</td>
           </tr>))}</tbody>
       </table></div>
     )}
@@ -256,12 +256,12 @@ export function Bans({ params }) {
     <ErrorBox text={error} />
     {loading && !data ? <Skeleton /> : !bans.length ? <div className="card"><Empty icon="shield" text="BANはありません" /></div> : (
       <div className="table-wrap"><table>
-        <thead><tr><th>種別</th><th>対象</th><th>理由</th><th>期限</th><th /></tr></thead>
+        <thead><tr><th>種別</th><th>対象</th><th className="hide-sm">理由</th><th>期限</th><th /></tr></thead>
         <tbody>{bans.map((b) => { const r = remaining(b.expires_at); return (
           <tr key={b.ip_hash}>
             <td><Badge tone={b.kind === "device" ? "violet" : "blue"}>{b.kind === "device" ? "端末" : "IP"}</Badge></td>
             <td><div><b>{b.username || "(手動)"}</b></div><div className="mono sub">{b.ip_hash.slice(0, 18)}…</div></td>
-            <td style={{ maxWidth: 280 }}>{b.reason}</td>
+            <td className="hide-sm" style={{ maxWidth: 280 }}>{b.reason}</td>
             <td><Badge tone={r.tone}>{r.text}</Badge></td>
             <td style={{ textAlign: "right" }}><button className="btn sm" onClick={() => del(b)}>解除</button></td>
           </tr>); })}</tbody>
@@ -333,14 +333,14 @@ export function Logs({ params }) {
     <ErrorBox text={error} />
     {loading && !data ? <Skeleton rows={6} /> : !rows.length ? <div className="card"><Empty icon="list" text="該当するログがありません" /></div> : (
       <div className="table-wrap"><table>
-        <thead><tr><th>時刻</th><th>種別</th><th>ユーザー</th><th>IP</th><th>詳細</th></tr></thead>
+        <thead><tr><th>時刻</th><th>種別</th><th>ユーザー</th><th>IP</th><th className="hide-sm">詳細</th></tr></thead>
         <tbody>{rows.map((r, i) => { const [label, tone] = r.type === "feature_status" ? [`${r.feature || "?"}:${r.status || ""}`, STATUS_TONE[r.status] || "gray"] : typeInfo(r.type); return (
           <tr key={i}>
             <td style={{ whiteSpace: "nowrap" }} title={fmtFull(r._time)}>{fmt(r._time)}</td>
             <td><Badge tone={tone}>{label}</Badge></td>
             <td>{r.username || ""}</td>
             <td className="mono">{r.ip || ""}</td>
-            <td className="sub mono" style={{ maxWidth: 360 }}>{[r.action && `action=${r.action}`, r.page && `page=${r.page}`, r.message, r.reason, r.key && `${r.key}=${r.value}`].filter(Boolean).join("  ")}</td>
+            <td className="sub mono hide-sm" style={{ maxWidth: 360 }}>{[r.action && `action=${r.action}`, r.page && `page=${r.page}`, r.message, r.reason, r.key && `${r.key}=${r.value}`].filter(Boolean).join("  ")}</td>
           </tr>); })}</tbody>
       </table></div>
     )}
@@ -401,6 +401,8 @@ export function Geo({ go }) {
       {data && <span className="sub" style={{ marginLeft: "auto" }}>{total.toLocaleString()}アクセス / {users}人(ユーザー)</span>}
     </div>
     <ErrorBox text={error} />
+    {data && data.unresolved > 0 && data.resolved === 0 && <div className="notice warn"><Icon name="alert" /><span>PostHogのIDとSupabaseのユーザーを紐づけられず、すべて匿名になっています。PostHog側のID例: <span className="mono">{(data.unresolvedSample || []).join(" / ")}</span><br />フロントで <span className="mono">posthog.identify(user.id)</span> が呼ばれているか、IDの形式をご確認ください。</span></div>}
+    {data && data.resolved > 0 && data.unresolved > 0 && <div className="sub">ユーザーに紐づけられなかった匿名アクセス: {data.unresolved}件(未ログイン・identify前のアクセスなど)</div>}
     {loading && !data ? <Skeleton rows={6} /> : data && <GeoPanel rows={rows} mode={mode} onOpenUser={(name) => go("users", { q: name })} />}
   </>;
 }
@@ -453,6 +455,59 @@ export function Status() {
             <span className="sub" style={{ width: 96, flex: "none" }} title={fmtFull(e._time)}>{fmt(e._time)}</span>
             <Badge tone={STATUS_TONE[e.status] || "gray"} dot>{e.status}</Badge><b>{e.feature}</b><span className="sub grow">{e.message}</span>
           </div>))}</div>)}
+    </div>
+  </>;
+}
+
+
+/* =========================================================
+   投稿(管理アカウントとして)
+   ========================================================= */
+export function PostAs() {
+  const { toast, confirm } = useUI();
+  const [uid, setUid] = useState(""); const [content, setContent] = useState(""); const [img, setImg] = useState("");
+  const [limited, setLimited] = useState(false); const [notify, setNotify] = useState(true); const [busy, setBusy] = useState(false);
+  const { data, loading, error, reload } = useLoad(() => api(`/api/admin/post${uid ? `?userId=${encodeURIComponent(uid)}` : ""}`), [uid]);
+  const accounts = data?.accounts || [];
+  const acct = accounts.find((a) => a.id === uid) || accounts[0];
+  useEffect(() => { if (!uid && accounts[0]) setUid(accounts[0].id); }, [accounts]); // eslint-disable-line
+  const submit = async () => {
+    if (!(await confirm({ title: `${acct.username} として投稿しますか?`, okText: "投稿する", body: <div className="post-prev">{content.slice(0, 300)}{content.length > 300 ? "…" : ""}{img && <div className="sub" style={{ marginTop: 8 }}>画像: {img}</div>}</div> }))) return;
+    setBusy(true);
+    try {
+      const j = await api("/api/admin/post", "POST", { userId: acct.id, content, image_url: img || null, is_limited: limited, notify });
+      toast(`投稿しました(フォロワー通知 ${j.notified}件)${j.limitedIgnored ? " ※認証済みでないため限定投稿は無効" : ""}`);
+      setContent(""); setImg(""); reload();
+    } catch (e) { toast(e.message, "err"); } finally { setBusy(false); }
+  };
+  const del = async (p) => {
+    if (!(await confirm({ title: "この投稿を削除しますか?", danger: true, okText: "削除する", body: <div className="post-prev">{(p.content || "").slice(0, 200)}</div> }))) return;
+    try { await api("/api/admin/post", "DELETE", { id: p.id, userId: acct.id }); toast("削除しました"); reload(); } catch (e) { toast(e.message, "err"); }
+  };
+  if (loading && !data) return <Skeleton rows={4} />;
+  if (error) return <ErrorBox text={error} />;
+  if (!acct) return <div className="card"><Empty icon="edit" text="投稿できるアカウントが見つかりません(ADMIN_POST_USER_IDS を確認してください)" /></div>;
+  return <>
+    <div className="card card-pad stack">
+      <div className="row" style={{ justifyContent: "space-between" }}>
+        <div className="row" style={{ gap: 12, flexWrap: "nowrap" }}><Avatar name={acct.username} src={acct.icon_url} size={44} /><div><div style={{ fontWeight: 800 }}>{acct.username} {acct.verified && <Badge tone="blue">公式</Badge>}</div><div className="sub mono">{acct.id}</div></div></div>
+        {accounts.length > 1 && <select className="select" style={{ width: 200 }} value={acct.id} onChange={(e) => setUid(e.target.value)}>{accounts.map((a) => <option key={a.id} value={a.id}>{a.username}</option>)}</select>}
+      </div>
+      <div className="field"><label>投稿内容</label><textarea className="input" value={content} onChange={(e) => setContent(e.target.value)} placeholder="いまどうしてる?" /><div className="sub" style={{ textAlign: "right" }}>{content.length.toLocaleString()} / 100,000</div></div>
+      <div className="field"><label>画像URL(任意)</label><input className="input" value={img} onChange={(e) => setImg(e.target.value)} placeholder="https://..." /></div>
+      <div className="grid g2">
+        <div className="check"><div><b>限定投稿</b><span>{acct.verified ? "認証済みユーザーだけに公開" : "このアカウントは認証済みでないため無効です"}</span></div><Switch checked={limited && !!acct.verified} disabled={!acct.verified} onChange={setLimited} /></div>
+        <div className="check"><div><b>フォロワーに通知</b><span>通常の投稿と同じ通知を送ります</span></div><Switch checked={notify} onChange={setNotify} /></div>
+      </div>
+      <div><button className="btn primary" disabled={busy || (!content.trim() && !img.trim())} onClick={submit}><Icon name="edit" size={16} />{acct.username} として投稿</button></div>
+    </div>
+    <div className="card card-pad">
+      <div className="card-head"><div><h2>最近の投稿</h2><div className="sub">このアカウントの直近20件</div></div><button className="btn sm" onClick={reload}><Icon name="refresh" size={14} /></button></div>
+      {!data.posts?.length ? <Empty icon="inbox" text="投稿はまだありません" /> : <div className="stack">{data.posts.map((p) => (
+        <div key={p.id} className="check" style={{ alignItems: "flex-start" }}>
+          <div style={{ minWidth: 0 }}><div className="row" style={{ gap: 6 }}><span className="sub" title={fmtFull(p.created_at)}>{ago(p.created_at)}</span>{p.is_limited && <Badge tone="violet">限定</Badge>}<Badge tone="gray">閲覧 {p.views || 0}</Badge></div><div className="post-prev" style={{ marginTop: 4 }}>{(p.content || "").slice(0, 200)}{(p.content || "").length > 200 ? "…" : ""}</div>{p.image_url && <div className="sub mono" style={{ wordBreak: "break-all" }}>{p.image_url}</div>}</div>
+          <button className="btn sm soft-danger" onClick={() => del(p)}><Icon name="trash" size={14} /></button>
+        </div>))}</div>}
     </div>
   </>;
 }

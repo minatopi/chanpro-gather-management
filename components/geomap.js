@@ -23,7 +23,7 @@ const shade=t=>`rgb(${lerp(238,47,t)},${lerp(242,91,t)},${lerp(255,255,t)})`;
 
 export function GeoPanel({rows,mode,onOpenUser}){
   const [land,setLand]=useState(null),[landErr,setLandErr]=useState(""),[sel,setSel]=useState(null),[zoomLevel,setZoomLevel]=useState(1);
-  const svgRef=useRef(null),gRef=useRef(null),zoomRef=useRef(null);
+  const svgRef=useRef(null),gRef=useRef(null),zoomRef=useRef(null),kRef=useRef(1);
 
   useEffect(()=>{
     let off=false;
@@ -35,10 +35,17 @@ export function GeoPanel({rows,mode,onOpenUser}){
   useEffect(()=>{
     if(!svgRef.current||!gRef.current)return;
     const svg=select(svgRef.current);
-    const z=zoom().scaleExtent([1,10]).on("zoom",e=>{
-      select(gRef.current).attr("transform",e.transform);
-      setZoomLevel(e.transform.k);
-    });
+    const z=zoom().scaleExtent([1,10])
+      // スマホ: 拡大前の1本指ドラッグはページのスクロールに使う(2本指ピンチ/拡大後のドラッグで地図を操作)
+      .filter(e=>{
+        if(e.type==="touchstart"||e.type==="touchmove")return (e.touches?.length||0)>1||kRef.current>1;
+        return !e.button&&(e.type==="wheel"?true:!e.ctrlKey);
+      })
+      .on("zoom",e=>{
+        select(gRef.current).attr("transform",e.transform);
+        kRef.current=e.transform.k;
+        setZoomLevel(e.transform.k);
+      });
     zoomRef.current=z;
     svg.call(z).on("dblclick.zoom",null);
     return()=>svg.on(".zoom",null);
@@ -104,9 +111,9 @@ export function GeoPanel({rows,mode,onOpenUser}){
 
   return <>
     {landErr&&<div className="notice warn"><Icon name="alert"/>地図の背景データを取得できなかったため、位置の点だけを表示しています({landErr})</div>}
-    <div className="grid" style={{gridTemplateColumns:"minmax(0,1.7fr) minmax(280px,1fr)",alignItems:"start"}}>
+    <div className="geo-grid">
       <div className="card" style={{padding:10,overflow:"hidden"}}>
-        <svg ref={svgRef} viewBox={`0 0 ${W} ${H[mode]}`} style={{width:"100%",height:"auto",display:"block",background:"#f4f7fd",borderRadius:10,cursor:"grab",touchAction:"none"}}>
+        <svg ref={svgRef} viewBox={`0 0 ${W} ${H[mode]}`} style={{width:"100%",height:"auto",display:"block",background:"#f4f7fd",borderRadius:10,cursor:"grab",touchAction:zoomLevel>1?"none":"pan-y"}}>
           <g ref={gRef}>
             {mode==="world"&&<path d={path({type:"Sphere"})} fill="#eef3fb" stroke="#dfe6f3"/>}
             {land?.features?.map((f,i)=>{
@@ -136,7 +143,7 @@ export function GeoPanel({rows,mode,onOpenUser}){
         </div>
         <div className="sub" style={{padding:"4px 6px",lineHeight:1.7}}>
           赤い丸=アクセス元の推定位置(大きいほど多い)/ 青の濃さ={mode==="japan"?"都道府県":"国"}ごとのアクセス数<br/>
-          ホイール・ピンチで拡大縮小、ドラッグで移動できます。
+          ホイール・2本指ピンチで拡大縮小、ドラッグで移動できます(スマホは拡大するか＋ボタンで操作)。
         </div>
       </div>
       <div className="card card-pad">
@@ -157,13 +164,13 @@ export function GeoPanel({rows,mode,onOpenUser}){
       </div>
       <div className="table-wrap" style={{boxShadow:"none"}}>
         <table>
-          <thead><tr><th>ユーザー</th><th>地域</th><th style={{textAlign:"right"}}>アクセス</th><th>最終</th></tr></thead>
+          <thead><tr><th>ユーザー</th><th>地域</th><th style={{textAlign:"right"}}>アクセス</th><th className="hide-sm">最終</th></tr></thead>
           <tbody>
             {shownUsers.map(u=><tr key={u.uid} className={u.username?"click":""} onClick={()=>u.username&&onOpenUser(u.username)}>
               <td><b>{u.username||"匿名(未ログイン)"}</b></td>
               <td>{[...u.places].slice(0,3).join("、")}{u.places.size>3?` ほか${u.places.size-3}`:""}</td>
               <td style={{textAlign:"right"}}>{u.n}</td>
-              <td className="sub">{ago(u.last)}</td>
+              <td className="sub hide-sm">{ago(u.last)}</td>
             </tr>)}
           </tbody>
         </table>

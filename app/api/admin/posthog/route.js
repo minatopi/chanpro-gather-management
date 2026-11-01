@@ -10,15 +10,15 @@ export const GET = guard(async (req) => {
   const userId = (sp.get("userId") || "").trim();
   if (!userId) return fail("userId が必要です");
   const days = Math.max(1, Math.min(365, parseInt(sp.get("days"), 10) || 30));
-  const values = { uid: userId };
+  const values = { uid: userId, uid2: "id-" + userId }; // distinct_id が "id-<uuid>" 形式でも拾う
   const ts = `timestamp > now() - INTERVAL ${days} DAY`;
   // mine: フロントから identify された本人のイベント / who: サーバー側セキュリティイベント(user_id付き)も含む
-  const mine = `distinct_id = {uid}`;
-  const who = `(distinct_id = {uid} OR properties.user_id = {uid})`;
+  const mine = `distinct_id IN ({uid}, {uid2})`;
+  const who = `(distinct_id IN ({uid}, {uid2}) OR properties.user_id = {uid})`;
 
   const jobs = {
     person: async () => {
-      let rows = await hogql(`SELECT id, created_at, properties FROM persons WHERE id IN (SELECT person_id FROM person_distinct_ids WHERE distinct_id = {uid}) LIMIT 1`, values).catch(() => []);
+      let rows = await hogql(`SELECT id, created_at, properties FROM persons WHERE id IN (SELECT person_id FROM person_distinct_ids WHERE distinct_id IN ({uid}, {uid2})) LIMIT 1`, values).catch(() => []);
       if (!rows.length) rows = await hogql(`SELECT person.id AS id, person.created_at AS created_at, person.properties AS properties FROM events WHERE ${mine} ORDER BY timestamp DESC LIMIT 1`, values);
       return rows[0] ? { id: rows[0].id, created_at: rows[0].created_at, properties: parse(rows[0].properties) } : null;
     },

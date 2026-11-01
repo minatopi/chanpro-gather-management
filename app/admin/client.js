@@ -1,11 +1,12 @@
 "use client";
 import { useState } from "react";
 import { UIProvider, Icon, api } from "@/components/ui";
-import { Dashboard, Users, Bans, Reports, Logs, Settings, Geo, Status } from "@/components/views";
+import { Dashboard, Users, Bans, Reports, Logs, Settings, Geo, Status, PostAs } from "@/components/views";
 
 const NAV = [
   ["dashboard", "ダッシュボード", "home", "全体の状況をひと目で確認", Dashboard],
   ["users", "ユーザー", "users", "権限・公式バッジ・アカウントBAN", Users],
+  ["post", "投稿", "edit", "管理アカウントとして投稿", PostAs],
   ["bans", "BAN管理", "shield", "ユーザー名・IP・端末のBANと芋づる式解除", Bans],
   ["reports", "報告・通報", "flag", "ユーザーから届いた報告と通報", Reports],
   ["geo", "アクセスマップ", "globe", "どこからアクセスが多いか(日本・世界)", Geo],
@@ -29,7 +30,7 @@ export default function AdminClient() {
           <div className="side-foot"><div className="nav"><button onClick={() => api("/api/admin/logout", "POST").then(() => (location.href = "/login"))}><Icon name="logout" />ログアウト</button></div></div>
         </aside>
         <div className="content">
-          <header className="topbar"><div><h1>{cur[1]}</h1><p>{cur[3]}</p></div></header>
+          <header className="topbar"><div><h1>{cur[1]}</h1><p>{cur[3]}</p></div><button className="btn sm only-sm" onClick={() => api("/api/admin/logout", "POST").then(() => (location.href = "/login"))}><Icon name="logout" size={15} />ログアウト</button></header>
           <main className="page"><View key={view + JSON.stringify(params)} go={go} params={params} /></main>
         </div>
       </div>
