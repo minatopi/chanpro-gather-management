@@ -1,89 +1,155 @@
 
-const http = require("node:http");
-const { performance } = require("node:perf_hooks");
+export const runtime = "nodejs";
+export const maxDuration = 15;
+export const dynamic = "force-dynamic";
 
-// 監視対象
-const target = {
+// ========================================
+// 監視設定
+// ========================================
+
+const TARGET = {
   name: "chanpro-gather",
   url: "https://chanpro-gather.vercel.app/api/health?token=minato126",
 };
 
-const PORT = process.env.PORT || 3000;
-const API_KEY = process.env.MONITOR_API_KEY;
+const TIMEOUT_MS = 10000;
 
-// POST API
-const server = http.createServer(async (req, res) => {
-  if (req.method !== "POST" || req.url !== "/monitor") {
-    res.writeHead(404, { "Content-Type": "application/json" });
-    return res.end(JSON.stringify({ error: "Not Found" }));
-  }
+// ========================================
+// JSONレスポンス共通処理
+// ========================================
 
-  // API認証
-  const auth = req.headers.authorization;
+function json(data, status = 200) {
+  return Response.json(data, {
+    status,
+    headers: {
+      "Cache-Control": "no-store, no-cache, must-revalidate",
+      "Pragma": "no-cache",
+    },
+  });
+}
 
-  if (!API_KEY || auth !== `Bearer ${API_KEY}`) {
-    res.writeHead(401, { "Content-Type": "application/json" });
-    return res.end(JSON.stringify({ error: "Unauthorized" }));
-  }
+// ========================================
+// 監視処理
+// ========================================
 
+async function checkHealth() {
   const start = performance.now();
 
   try {
-    const response = await fetch(target.url, {
+    if (!TARGET.url) {
+      throw new Error("CHANPRO_HEALTH_URL is not configured");
+    }
+
+    const response = await fetch(TARGET.url, {
       method: "GET",
       cache: "no-store",
       redirect: "manual",
-      signal: AbortSignal.timeout(10000),
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+      headers: {
+        "Accept": "application/json",
+        "Cache-Control": "no-cache",
+      },
     });
 
-    const responseTime =
-      Math.round((performance.now() - start) * 100) / 100;
-
-    let isUp = false;
+    let data = null;
 
     try {
-      const data = await response.json();
-      isUp = response.ok && data.status === "ok";
+      data = await response.json();
     } catch {
-      isUp = false;
+      data = null;
     }
 
-    const result = {
-      name: target.name,
+    const responseTime = Math.round(
+      (performance.now() - start) * 100
+    ) / 100;
+
+    const isUp = response.ok && data?.status === "ok";
+
+    return {
+      name: TARGET.name,
       status: isUp ? "UP" : "DOWN",
       is_up: isUp,
       status_code: response.status,
       response_time_ms: responseTime,
       checked_at: new Date().toISOString(),
+      health_response: data,
     };
 
-    res.writeHead(200, {
-      "Content-Type": "application/json; charset=utf-8",
-    });
-
-    res.end(JSON.stringify(result));
-
   } catch (error) {
-    const result = {
-      name: target.name,
+    return {
+      name: TARGET.name,
       status: "DOWN",
       is_up: false,
       status_code: null,
-      response_time_ms:
-        Math.round((performance.now() - start) * 100) / 100,
-      error: error instanceof Error ? error.message : "Unknown error",
+      response_time_ms: Math.round(
+        (performance.now() - start) * 100
+      ) / 100,
+      error: error instanceof Error
+        ? error.message
+        : "Unknown error",
       checked_at: new Date().toISOString(),
     };
-
-    res.writeHead(200, {
-      "Content-Type": "application/json; charset=utf-8",
-    });
-
-    res.end(JSON.stringify(result));
   }
-});
+}
 
-// サーバー起動
-server.listen(PORT, () => {
-  console.log(`Monitor API running on port ${PORT}`);
-});
+// ========================================
+// API認証
+// ========================================
+
+function authenticate(request) {
+  const apiKey = process.env.MONITOR_API_KEY;
+
+  if (!apiKey) {
+    return false;
+  }
+
+  const authorization = request.headers.get("authorization");
+
+  return authorization === `Bearer ${apiKey}`;
+}
+
+// ========================================
+// GET
+// ========================================
+
+export async function GET(request) {
+  if (!authenticate(request)) {
+    return json({
+      error: "Unauthorized",
+    }, 401);
+  }
+
+  const result = await checkHealth();
+
+  return json(result);
+}
+
+// ========================================
+// POST
+// ========================================
+
+export async function POST(request) {
+  if (!authenticate(request)) {
+    return json({
+      error: "Unauthorized",
+    }, 401);
+  }
+
+  const result = await checkHealth();
+
+  return json(result);
+}
+
+// ========================================
+// OPTIONS
+// ========================================
+
+export async function OPTIONS() {
+  return new Response(null, {
+    status: 204,
+    headers: {
+      "Allow": "GET, POST, OPTIONS",
+      "Cache-Control": "no-store",
+    },
+  });
+}
