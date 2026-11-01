@@ -1,24 +1,29 @@
-export const runtime = "nodejs";
-export const maxDuration = 15;
 
-// 監視対象を直接指定
+const http = require("node:http");
+const { performance } = require("node:perf_hooks");
+
+// 監視対象
 const target = {
   name: "chanpro-gather",
   url: "https://chanpro-gather.vercel.app/api/health?token=minato126",
 };
 
-export async function POST(request: Request) {
-  // API認証
-  const apiKey = process.env.MONITOR_API_KEY;
+const PORT = process.env.PORT || 3000;
+const API_KEY = process.env.MONITOR_API_KEY;
 
-  if (
-    !apiKey ||
-    request.headers.get("authorization") !== `Bearer ${apiKey}`
-  ) {
-    return Response.json(
-      { error: "Unauthorized" },
-      { status: 401 }
-    );
+// POST API
+const server = http.createServer(async (req, res) => {
+  if (req.method !== "POST" || req.url !== "/monitor") {
+    res.writeHead(404, { "Content-Type": "application/json" });
+    return res.end(JSON.stringify({ error: "Not Found" }));
+  }
+
+  // API認証
+  const auth = req.headers.authorization;
+
+  if (!API_KEY || auth !== `Bearer ${API_KEY}`) {
+    res.writeHead(401, { "Content-Type": "application/json" });
+    return res.end(JSON.stringify({ error: "Unauthorized" }));
   }
 
   const start = performance.now();
@@ -31,9 +36,8 @@ export async function POST(request: Request) {
       signal: AbortSignal.timeout(10000),
     });
 
-    const responseTime = Math.round(
-      (performance.now() - start) * 100
-    ) / 100;
+    const responseTime =
+      Math.round((performance.now() - start) * 100) / 100;
 
     let isUp = false;
 
@@ -44,28 +48,42 @@ export async function POST(request: Request) {
       isUp = false;
     }
 
-    return Response.json({
+    const result = {
       name: target.name,
       status: isUp ? "UP" : "DOWN",
       is_up: isUp,
       status_code: response.status,
       response_time_ms: responseTime,
       checked_at: new Date().toISOString(),
+    };
+
+    res.writeHead(200, {
+      "Content-Type": "application/json; charset=utf-8",
     });
 
+    res.end(JSON.stringify(result));
+
   } catch (error) {
-    return Response.json({
+    const result = {
       name: target.name,
       status: "DOWN",
       is_up: false,
       status_code: null,
-      response_time_ms: Math.round(
-        (performance.now() - start) * 100
-      ) / 100,
-      error: error instanceof Error
-        ? error.message
-        : "Unknown error",
+      response_time_ms:
+        Math.round((performance.now() - start) * 100) / 100,
+      error: error instanceof Error ? error.message : "Unknown error",
       checked_at: new Date().toISOString(),
+    };
+
+    res.writeHead(200, {
+      "Content-Type": "application/json; charset=utf-8",
     });
+
+    res.end(JSON.stringify(result));
   }
-}
+});
+
+// サーバー起動
+server.listen(PORT, () => {
+  console.log(`Monitor API running on port ${PORT}`);
+});
