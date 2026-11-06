@@ -17,7 +17,7 @@ export const GET = guard(async () => {
     safeCount(sb.from("users").select("id", head).gt("ban_until", now)),
     safeCount(sb.from("gather_reports").select("id", head).eq("status", "open")),
     safeCount(sb.from("reports").select("id", head).neq("status", "resolved")),
-    safeCount(sb.from("banned_ip_addresses").select("ip_hash", head).or(`expires_at.is.null,expires_at.gt.${now}`)),
+    safeCount(sb.from("banned_ip_addresses").select("ip_hash", head).neq("kind", "admin_lock").or(`expires_at.is.null,expires_at.gt.${now}`)),
   ]);
   const { data: st } = await sb.from("app_settings").select("key,value");
   const settings = Object.fromEntries((st || []).map((r) => [r.key, r.value]));
@@ -28,8 +28,14 @@ export const GET = guard(async () => {
     activity = await axiomQuery(`['${ds}'] | where _time > ago(24h) | summarize n=count() by type | order by n desc | take 12`);
   } catch (e) { activityError = e.message; }
 
+  let adminLogins = null;
+  try {
+    const ds2 = (process.env.AXIOM_DATASET || "chanpro").replace(/[^\w-]/g, "");
+    adminLogins = await axiomQuery(`['${ds2}'] | where _time > ago(30d) | where type in ("admin_login_success","admin_login_failed") | sort by _time desc | take 5`);
+  } catch { /* 表示のみ */ }
+
   let featureStatus = null;
   try { featureStatus = (await loadStatus(30)).current; } catch { /* Axiom未設定でも表示は続行 */ }
 
-  return NextResponse.json({ users, verified, banned, openReports, openUserReports, ipBans, settings, activity, activityError, featureStatus });
+  return NextResponse.json({ users, verified, banned, openReports, openUserReports, ipBans, settings, activity, activityError, featureStatus, adminLogins });
 });

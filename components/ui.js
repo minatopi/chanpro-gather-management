@@ -34,7 +34,14 @@ export const isBanned = (u) => u?.ban_until && new Date(u.ban_until).getTime() >
 export const TYPE_INFO = {
   login_success: ["ログイン成功", "green"], login_failed: ["ログイン失敗", "red"], login_blocked: ["ログイン停止中", "amber"],
   register_created: ["新規作成", "blue"], register_blocked: ["新規作成停止中", "amber"], access: ["アクセス", "gray"],
-  feature_status: ["機能ステータス", "violet"], ip_banned_request: ["IP BAN遮断", "red"], device_banned_request: ["端末BAN遮断", "red"], ip_rate_limited: ["レート制限", "amber"],
+  feature_status: ["機能ステータス", "violet"],
+  db_read_batch: ["DB読み込み", "gray"], admin_login_locked: ["管理ログインロック", "amber"],
+  post_created: ["投稿", "blue"], post_deleted: ["投稿削除", "gray"], reply_created: ["返信", "blue"], reply_deleted: ["返信削除", "gray"],
+  like_toggled: ["いいね", "green"], repost_toggled: ["リポスト", "green"], bookmark_toggled: ["ブックマーク", "gray"], poll_voted: ["投票", "gray"],
+  follow_toggled: ["フォロー", "violet"], dm_sent: ["DM送信", "blue"], report_submitted: ["報告", "amber"], points_transferred: ["ポイント送信", "amber"],
+  stamp_purchased: ["スタンプ購入", "amber"], chat_points: ["チャットpt", "gray"], user_updated: ["プロフィール変更", "gray"], account_deleted: ["退会", "red"],
+  admin_api_action: ["管理操作(API)", "violet"], api_error: ["APIエラー", "red"],
+  admin_login_success: ["管理ログイン成功", "green"], admin_login_failed: ["管理ログイン失敗", "red"], admin_unauthorized: ["管理 未認証アクセス", "red"], admin_logout: ["管理ログアウト", "gray"], ip_banned_request: ["IP BAN遮断", "red"], device_banned_request: ["端末BAN遮断", "red"], ip_rate_limited: ["レート制限", "amber"],
 };
 export const STATUS_TONE = { 停止: "red", 復旧: "green", 不具合: "amber", 調査中: "blue", メンテナンス: "violet" };
 export function typeInfo(t) {
@@ -53,6 +60,8 @@ const ICONS = {
   ban: "M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18|M5.6 5.6l12.8 12.8", alert: "M12 9v4M12 17h.01|M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z",
   inbox: "M22 12h-6l-2 3h-4l-2-3H2|M5.5 5h13l3.5 7v6a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-6z", activity: "M22 12h-4l-3 9L9 3l-3 9H2", globe: "M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18|M3 12h18|M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18",
   copy: "M9 9h11v11H9z|M5 15V4h11",
+  chart: "M3 3v18h18|M7 15l4-4 3 3 5-6",
+  lock: "M5 11h14v10H5z|M8 11V7a4 4 0 0 1 8 0v4",
   plus: "M12 5v14M5 12h14", minus: "M5 12h14", edit: "M12 20h9|M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z", trash: "M3 6h18|M8 6V4h8v2|M6 6l1 14h10l1-14",
   maximize: "M8 3H5a2 2 0 0 0-2 2v3|M21 8V5a2 2 0 0 0-2-2h-3|M3 16v3a2 2 0 0 0 2 2h3|M16 21h3a2 2 0 0 0 2-2v-3", info: "M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18|M12 16v-4M12 8h.01",
 };

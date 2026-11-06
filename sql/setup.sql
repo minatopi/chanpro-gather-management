@@ -52,3 +52,9 @@ alter table public.banned_ip_addresses add column if not exists user_id uuid;
 alter table public.banned_ip_addresses add column if not exists username text;
 create index if not exists banned_ip_addresses_username_idx on public.banned_ip_addresses (username);
 notify pgrst, 'reload schema';
+
+-- アクセスIPの保存(Gather APIが記録): 最終ログインIPと、アクセスされたすべてのIPのリスト
+alter table public.users add column if not exists last_login_ip text;
+alter table public.users add column if not exists ip_list jsonb not null default '[]'::jsonb;
+create index if not exists users_ip_list_gin on public.users using gin (ip_list jsonb_path_ops);
+notify pgrst, 'reload schema';

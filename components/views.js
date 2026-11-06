@@ -40,6 +40,11 @@ export function Dashboard({ go }) {
       ))}
     </div>
     <div className="card card-pad">
+      <div className="card-head"><div><h2>管理サイトのログイン履歴</h2><div className="sub">直近5件</div></div><button className="btn sm" onClick={() => go("logs", { kind: "admin" })}>すべて見る</button></div>
+      {!d.adminLogins ? <div className="sub">Axiomを読み込めないため表示できません</div> : !d.adminLogins.length ? <div className="sub">記録なし</div> : <div className="stack">{d.adminLogins.map((e, i) => (
+        <div key={i} className="row" style={{ gap: 10 }}><Badge tone={e.type === "admin_login_success" ? "green" : "red"} dot>{e.type === "admin_login_success" ? "成功" : "失敗"}</Badge><span className="mono">{e.ip}</span><span className="sub">{[e.country, e.city].filter(Boolean).join(" / ")}</span><span className="sub" style={{ marginLeft: "auto" }}>{ago(e._time)}</span></div>))}</div>}
+    </div>
+    <div className="card card-pad">
       <div className="card-head"><div><h2>機能の状況</h2><div className="sub">「機能ステータス」で記録した最新の状態</div></div><button className="btn sm" onClick={() => go("status")}>記録・履歴</button></div>
       {!d.featureStatus ? <div className="sub">Axiomを読み込めないため表示できません</div>
         : !d.featureStatus.length ? <div className="row"><Badge tone="green" dot>記録なし(すべて通常)</Badge></div>
@@ -102,6 +107,32 @@ function PostHogSection({ user, go }) {
   );
 }
 
+function UserIps({ user, go }) {
+  const { toast, confirm } = useUI();
+  const { data: d, loading, error } = useLoad(() => api(`/api/admin/user-ips?userId=${user.id}`), [user.id]);
+  const ban = async (ip) => {
+    if (!(await confirm({ title: `${ip} をBANしますか?`, body: "このIPからのアクセスを24時間停止します。共有Wi-Fiなどでは他の人も巻き込まれます。", danger: true, okText: "BANする" }))) return;
+    try { await api("/api/admin/ip-bans", "POST", { ip, minutes: 1440, reason: `ユーザー ${user.username} のIP` }); toast("IPをBANしました"); } catch (e) { toast(e.message, "err"); }
+  };
+  return (
+    <section>
+      <div className="sec-title">IPアドレス履歴(DB)</div>
+      {loading && !d ? <Skeleton rows={2} /> : error ? <ErrorBox text={error} /> : <div className="stack">
+        <div className="row"><span className="sub">最終ログインIP</span><span className="mono">{d.last_login_ip || "記録なし"}</span></div>
+        {!d.ip_list.length ? <div className="sub">アクセスIPの記録がまだありません</div> : d.ip_list.map((x) => (
+          <div key={x.ip} className="check" style={{ alignItems: "flex-start" }}>
+            <div style={{ minWidth: 0 }}>
+              <div className="mono">{x.ip}</div>
+              <div className="sub">最終 {ago(x.last)} ・初回 {fmt(x.first)} ・{x.n}回</div>
+              {d.shared[x.ip] && <div className="row" style={{ gap: 6, marginTop: 4 }}><Badge tone="amber">同じIPのアカウント</Badge>{d.shared[x.ip].map((o) => <button key={o.id} className="btn sm ghost" onClick={() => go("users", { q: o.username })}>{o.username}</button>)}</div>}
+            </div>
+            <button className="btn sm soft-danger" onClick={() => ban(x.ip)}>BAN</button>
+          </div>))}
+      </div>}
+    </section>
+  );
+}
+
 function UserPanel({ user: initial, onClose, onChanged, go }) {
   const { toast, confirm } = useUI();
   const [u, setU] = useState(initial); const [busy, setBusy] = useState(false);
@@ -142,6 +173,7 @@ function UserPanel({ user: initial, onClose, onChanged, go }) {
         <div className="sec-title">ポイント・状態</div>
         <div className="row"><Badge tone="blue">{(u.points ?? 0).toLocaleString()} pt</Badge><Badge tone="gray">BAN {u.ban_count || 0}回</Badge></div>
       </section>
+      <UserIps user={u} go={go} />
       <PostHogSection user={u} go={go} />
     </Drawer>
   );
@@ -204,8 +236,8 @@ function UserBanCard({ initialUsername, onDone }) {
         <div className="field"><label>理由(任意)</label><input className="input" value={f.reason} onChange={(e) => set("reason", e.target.value)} placeholder="スパム投稿 など" /></div>
       </div>
       <div className="stack">
-        <Opt k="withIp" title="過去30日のIPもBAN" desc="PostHogのPerson(アクセス履歴)とAxiomのログからIPを集めます" />
-        {f.withIp && <div className="row" style={{ paddingLeft: 4 }}><span className="sub">IPの取得元</span><Seg value={f.ipSource} onChange={(v) => set("ipSource", v)} options={[["both", "PostHog + Axiom"], ["posthog", "PostHogのPerson"], ["axiom", "Axiomのみ"]]} /></div>}
+        <Opt k="withIp" title="過去30日のIPもBAN" desc="ユーザーのIP履歴(DB)・PostHogのPerson・Axiomのログから集めます" />
+        {f.withIp && <div className="row" style={{ paddingLeft: 4 }}><span className="sub">IPの取得元</span><Seg value={f.ipSource} onChange={(v) => set("ipSource", v)} options={[["both", "すべて"], ["db", "DBのIP履歴"], ["posthog", "PostHog"], ["axiom", "Axiom"]]} /></div>}
         <Opt k="withDevice" title="端末をBAN" desc="この端末からの新規作成・ログインを止めます" />
         <Opt k="cascade" title="同じ端末のアカウントも芋づる式にBAN" desc="共有端末の別アカウントも順にたどります(最大50件)" />
       </div>
@@ -217,7 +249,7 @@ function UserBanCard({ initialUsername, onDone }) {
       {plan && (
         <div className="stack" style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--line)" }}>
           <div><div className="sec-title">アカウント({plan.accounts.length})</div>{plan.accounts.map((a) => <span key={a.id} className="chip">{a.username}</span>)}</div>
-          <div><div className="sec-title">IP({plan.ips.length})</div>{plan.ipDetails?.length ? plan.ipDetails.map((x) => <div key={x.ip} className="row" style={{ gap: 8, margin: "3px 0" }}><span className="chip" style={{ margin: 0 }}>{x.ip}</span><span className="sub">{[x.country, x.city].filter(Boolean).join(" / ")}</span>{x.sources.map((src) => <Badge key={src} tone={src === "PostHog" ? "violet" : "blue"}>{src}</Badge>)}{x.last_seen && <span className="sub">{ago(x.last_seen)}</span>}</div>) : <span className="sub">なし</span>}</div>
+          <div><div className="sec-title">IP({plan.ips.length})</div>{plan.ipDetails?.length ? plan.ipDetails.map((x) => <div key={x.ip} className="row" style={{ gap: 8, margin: "3px 0" }}><span className="chip" style={{ margin: 0 }}>{x.ip}</span><span className="sub">{[x.country, x.city].filter(Boolean).join(" / ")}</span>{x.sources.map((src) => <Badge key={src} tone={src === "PostHog" ? "violet" : src === "DB" ? "green" : "blue"}>{src}</Badge>)}{x.last_seen && <span className="sub">{ago(x.last_seen)}</span>}</div>) : <span className="sub">なし</span>}</div>
           <div><div className="sec-title">端末({plan.devices.length})</div>{plan.devices.length ? plan.devices.map((d) => <span key={d} className="chip">{d}</span>) : <span className="sub">なし</span>}</div>
           {plan.warnings.map((w, i) => <div key={i} className="notice warn"><Icon name="alert" />{w}</div>)}
           <div className="notice info"><Icon name="info" />共有Wi-Fiや携帯回線のIPをBANすると、無関係な人も巻き込みます。</div>
@@ -252,14 +284,14 @@ export function Bans({ params }) {
         <button className="btn danger" disabled={!ip.trim()} onClick={ban}>BAN</button>
       </div>
     </div>
-    <div className="row"><SearchBox value={text} onChange={setText} placeholder="ユーザー名・理由で絞り込み" /><Seg value={kind} onChange={setKind} options={[["all", "すべて"], ["ip", "IP"], ["device", "端末"]]} /></div>
+    <div className="row"><SearchBox value={text} onChange={setText} placeholder="ユーザー名・理由で絞り込み" /><Seg value={kind} onChange={setKind} options={[["all", "すべて"], ["ip", "IP"], ["device", "端末"], ["admin_lock", "管理ロック"]]} /></div>
     <ErrorBox text={error} />
     {loading && !data ? <Skeleton /> : !bans.length ? <div className="card"><Empty icon="shield" text="BANはありません" /></div> : (
       <div className="table-wrap"><table>
         <thead><tr><th>種別</th><th>対象</th><th className="hide-sm">理由</th><th>期限</th><th /></tr></thead>
         <tbody>{bans.map((b) => { const r = remaining(b.expires_at); return (
           <tr key={b.ip_hash}>
-            <td><Badge tone={b.kind === "device" ? "violet" : "blue"}>{b.kind === "device" ? "端末" : "IP"}</Badge></td>
+            <td><Badge tone={b.kind === "device" ? "violet" : b.kind === "admin_lock" ? "amber" : "blue"}>{b.kind === "device" ? "端末" : b.kind === "admin_lock" ? "管理ロック" : "IP"}</Badge></td>
             <td><div><b>{b.username || "(手動)"}</b></div><div className="mono sub">{b.ip_hash.slice(0, 18)}…</div></td>
             <td className="hide-sm" style={{ maxWidth: 280 }}>{b.reason}</td>
             <td><Badge tone={r.tone}>{r.text}</Badge></td>
@@ -315,6 +347,21 @@ export function Reports({ go }) {
 /* =========================================================
    アクセスログ(Axiom)
    ========================================================= */
+const LOG_SKIP = new Set(["_time", "_sysTime", "_rowId", "type", "username", "ip", "ip_hash", "source", "user_id", "device_hash", "country", "region", "city", "feature", "status"]);
+const readsOf = (r) => {
+  let x = r.reads;
+  if (typeof x === "string") { try { x = JSON.parse(x); } catch { /* そのまま */ } }
+  if (!Array.isArray(x)) return "";
+  return [...new Set(x.map((i) => (i && i.table ? `${i.table}${i.query_keys?.length ? `(${[].concat(i.query_keys).join(",")})` : ""}` : "")).filter(Boolean))].join(", ");
+};
+const detailOf = (r) => {
+  const isRead = r.type === "db_read_batch";
+  const rest = Object.entries(r).filter(([k, v]) => !LOG_SKIP.has(k) && !(isRead && (k === "reads" || k === "request_count")) && v != null && v !== "").map(([k, v]) => `${k}=${typeof v === "object" ? JSON.stringify(v) : String(v).slice(0, 90)}`).join("  ");
+  if (!isRead) return rest;
+  const t = readsOf(r);
+  return `DB読み込み${r.request_count ? ` ${r.request_count}件` : ""}${t ? `: ${t}` : ""}${rest ? "  " + rest : ""}`;
+};
+
 export function Logs({ params }) {
   const [kind, setKind] = useState(params?.kind || "login"); const [hours, setHours] = useState(24);
   const [text, setText] = useState(params?.username || ""); const username = useDebounced(text, 500);
@@ -324,7 +371,7 @@ export function Logs({ params }) {
   const rows = data?.rows || [];
   return <>
     <div className="row">
-      <Seg value={kind} onChange={setKind} options={[["login", "ログイン"], ["access", "アクセス"], ["ip", "IP・端末制限"], ["status", "機能ステータス"]]} />
+      <Seg value={kind} onChange={setKind} options={[["login", "ログイン"], ["access", "アクセス"], ["activity", "ユーザー操作"], ["error", "エラー"], ["ip", "IP・端末制限"], ["status", "機能ステータス"], ["admin", "管理サイト"]]} />
       <SearchBox value={text} onChange={setText} placeholder="ユーザー名で絞り込み" />
       <select className="select" style={{ width: 140 }} value={hours} onChange={(e) => setHours(e.target.value)}>{[[1, "直近1時間"], [24, "直近24時間"], [72, "直近3日"], [168, "直近7日"], [720, "直近30日"]].map(([h, l]) => <option key={h} value={h}>{l}</option>)}</select>
       <label className="row sub" style={{ gap: 8 }}><Switch checked={auto} onChange={setAuto} />自動更新</label>
@@ -338,9 +385,9 @@ export function Logs({ params }) {
           <tr key={i}>
             <td style={{ whiteSpace: "nowrap" }} title={fmtFull(r._time)}>{fmt(r._time)}</td>
             <td><Badge tone={tone}>{label}</Badge></td>
-            <td>{r.username || ""}</td>
-            <td className="mono">{r.ip || ""}</td>
-            <td className="sub mono hide-sm" style={{ maxWidth: 360 }}>{[r.action && `action=${r.action}`, r.page && `page=${r.page}`, r.message, r.reason, r.key && `${r.key}=${r.value}`].filter(Boolean).join("  ")}</td>
+            <td>{r.username || (r.type === "db_read_batch" || r.type === "access" ? <span className="sub">未ログイン</span> : "")}</td>
+            <td className="mono">{r.ip || ""}{r.country ? <div className="sub">{[r.country, r.city].filter(Boolean).join(" / ")}</div> : null}</td>
+            <td className="sub mono hide-sm" style={{ maxWidth: 380 }}>{detailOf(r)}</td>
           </tr>); })}</tbody>
       </table></div>
     )}
@@ -509,5 +556,138 @@ export function PostAs() {
           <button className="btn sm soft-danger" onClick={() => del(p)}><Icon name="trash" size={14} /></button>
         </div>))}</div>}
     </div>
+  </>;
+}
+
+
+/* =========================================================
+   分析(Axiom + DBのIP履歴)
+   ========================================================= */
+function StackedBars({ rows, series, height = 170 }) {
+  const W = 900, pad = { l: 34, r: 8, t: 10, b: 26 };
+  if (!rows.length) return <Empty icon="chart" text="データがありません" />;
+  const max = Math.max(1, ...rows.map((r) => series.reduce((a, s) => a + (r[s.key] || 0), 0)));
+  const bw = (W - pad.l - pad.r) / rows.length; const h = height - pad.t - pad.b;
+  const step = Math.ceil(rows.length / 8);
+  return (
+    <svg viewBox={`0 0 ${W} ${height}`} style={{ width: "100%", height: "auto" }}>
+      {[0, 0.5, 1].map((t) => <g key={t}><line x1={pad.l} x2={W - pad.r} y1={pad.t + h * (1 - t)} y2={pad.t + h * (1 - t)} stroke="#e7e9ee" /><text x={pad.l - 6} y={pad.t + h * (1 - t) + 4} fontSize="11" textAnchor="end" fill="#6b7385">{Math.round(max * t)}</text></g>)}
+      {rows.map((r, i) => { let y = pad.t + h; const x = pad.l + i * bw + bw * 0.15;
+        return <g key={i}>
+          {series.map((s) => { const v = r[s.key] || 0; const hh = (v / max) * h; y -= hh; return hh > 0 ? <rect key={s.key} x={x} y={y} width={bw * 0.7} height={hh} fill={s.color} rx="2"><title>{`${fmt(r.t)}  ${s.label}: ${v}`}</title></rect> : null; })}
+          {i % step === 0 && <text x={x + bw * 0.35} y={height - 8} fontSize="11" textAnchor="middle" fill="#6b7385">{new Date(r.t).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit" })}</text>}
+        </g>; })}
+    </svg>
+  );
+}
+
+export function Analytics({ go }) {
+  const { toast, confirm } = useUI(); const [hours, setHours] = useState(24);
+  const { data: d, loading, error, reload } = useLoad(() => api(`/api/admin/analytics?hours=${hours}`), [hours]);
+  const banIp = async (ip) => {
+    if (!(await confirm({ title: `${ip} をBANしますか?`, body: "このIPからのアクセスを24時間停止します。", danger: true, okText: "BANする" }))) return;
+    try { await api("/api/admin/ip-bans", "POST", { ip, minutes: 1440, reason: "ログイン失敗が多数(分析画面から)" }); toast("IPをBANしました"); } catch (e) { toast(e.message, "err"); }
+  };
+  if (loading && !d) return <Skeleton rows={6} />;
+  if (error) return <ErrorBox text={error} />;
+  const t = d.totals || {}; const num = (v) => Number(v || 0).toLocaleString();
+  const cards = [["access", "アクセス", "blue", "activity"], ["users", "アクティブユーザー", "green", "users"], ["login_ok", "ログイン成功", "green", "check"], ["login_fail", "ログイン失敗", "amber", "alert"], ["registered", "新規登録", "violet", "users"], ["errors", "APIエラー", "red", "alert"], ["posts", "投稿", "blue", "edit"], ["likes", "いいね", "green", "badge"]];
+  return <>
+    <div className="row"><Seg value={hours} onChange={setHours} options={[[6, "6時間"], [24, "24時間"], [72, "3日"], [168, "7日"]]} /><button className="btn" onClick={reload}><Icon name="refresh" size={15} />更新</button></div>
+    {d.errors?.length > 0 && <div className="notice warn"><Icon name="alert" /><span>一部のログを取得できませんでした: {d.errors[0]}{d.errors.length > 1 ? ` ほか${d.errors.length - 1}件` : ""}</span></div>}
+    <div className="grid g4">{cards.map(([k, label, tone, icon]) => <Stat key={k} icon={icon} tone={tone} label={label} value={num(t[k])} />)}</div>
+    <div className="card card-pad"><div className="card-head"><div><h2>アクセス数の推移</h2><div className="sub">{d.bin}ごと</div></div></div><StackedBars rows={d.timeline} series={[{ key: "access", color: "#2f5bff", label: "アクセス" }]} /></div>
+    <div className="card card-pad"><div className="card-head"><div><h2>ログイン・エラー・投稿の推移</h2><div className="sub"><span style={{ color: "#12a150" }}>■</span> ログイン成功 <span style={{ color: "#e0a21e" }}>■</span> ログイン失敗 <span style={{ color: "#dc2f3f" }}>■</span> APIエラー <span style={{ color: "#8b5cf6" }}>■</span> 投稿</div></div></div>
+      <StackedBars rows={d.timeline} series={[{ key: "login_ok", color: "#12a150", label: "ログイン成功" }, { key: "login_fail", color: "#e0a21e", label: "ログイン失敗" }, { key: "errors", color: "#dc2f3f", label: "APIエラー" }, { key: "posts", color: "#8b5cf6", label: "投稿" }]} /></div>
+    <div className="grid g2">
+      <div className="card card-pad"><div className="card-head"><h2>よく使われる操作</h2></div>
+        {!d.actions.length ? <Empty icon="list" text="データなし" /> : <div className="table-wrap" style={{ boxShadow: "none" }}><table><thead><tr><th>操作</th><th style={{ textAlign: "right" }}>回数</th><th className="hide-sm" style={{ textAlign: "right" }}>平均</th><th className="hide-sm" style={{ textAlign: "right" }}>最大</th></tr></thead><tbody>{d.actions.map((r) => <tr key={r.action}><td className="mono">{r.action}</td><td style={{ textAlign: "right" }}>{num(r.n)}</td><td className="hide-sm" style={{ textAlign: "right" }}>{Math.round(r.avg_ms || 0)}ms</td><td className="hide-sm" style={{ textAlign: "right" }}>{Math.round(r.max_ms || 0)}ms</td></tr>)}</tbody></table></div>}</div>
+      <div className="card card-pad"><div className="card-head"><h2>エラーの内訳</h2></div>
+        {!d.errorsBy.length ? <Empty icon="check" text="エラーはありません" /> : <div className="table-wrap" style={{ boxShadow: "none" }}><table><thead><tr><th>操作</th><th>HTTP</th><th style={{ textAlign: "right" }}>回数</th></tr></thead><tbody>{d.errorsBy.map((r, i) => <tr key={i}><td className="mono">{r.action || "-"}</td><td><Badge tone="red">{r.status}</Badge></td><td style={{ textAlign: "right" }}>{num(r.n)}</td></tr>)}</tbody></table></div>}</div>
+    </div>
+    <div className="grid g2">
+      <div className="card card-pad"><div className="card-head"><h2>アクセスの多いIP</h2></div>
+        {!d.topIps.length ? <Empty icon="globe" text="データなし" /> : <div className="table-wrap" style={{ boxShadow: "none" }}><table><thead><tr><th>IP</th><th style={{ textAlign: "right" }}>回数</th><th style={{ textAlign: "right" }}>ユーザー</th></tr></thead><tbody>{d.topIps.map((r) => <tr key={r.ip}><td className="mono">{r.ip}</td><td style={{ textAlign: "right" }}>{num(r.n)}</td><td style={{ textAlign: "right" }}>{r.users}</td></tr>)}</tbody></table></div>}</div>
+      <div className="card card-pad"><div className="card-head"><div><h2>ログイン失敗が多いIP</h2><div className="sub">3回以上(総当たりの疑い)</div></div></div>
+        {!d.failIps.length ? <Empty icon="check" text="該当なし" /> : <div className="table-wrap" style={{ boxShadow: "none" }}><table><thead><tr><th>IP</th><th style={{ textAlign: "right" }}>失敗</th><th className="hide-sm" style={{ textAlign: "right" }}>名前数</th><th /></tr></thead><tbody>{d.failIps.map((r) => <tr key={r.ip}><td className="mono">{r.ip}<div className="sub">{ago(r.last)}</div></td><td style={{ textAlign: "right" }}>{num(r.n)}</td><td className="hide-sm" style={{ textAlign: "right" }}>{r.names}</td><td style={{ textAlign: "right" }}><button className="btn sm soft-danger" onClick={() => banIp(r.ip)}>BAN</button></td></tr>)}</tbody></table></div>}</div>
+    </div>
+    <div className="grid g2">
+      <div className="card card-pad"><div className="card-head"><div><h2>複数アカウントで使われているIP</h2><div className="sub">サブ垢・多重登録の手がかり(DBのIP履歴)</div></div></div>
+        {d.dbError ? <div className="notice warn"><Icon name="alert" />{d.dbError}</div> : !d.shared.length ? <Empty icon="check" text="該当なし" /> : <div className="stack">{d.shared.map((r) => <div key={r.ip} className="check" style={{ alignItems: "flex-start" }}><div><div className="mono">{r.ip}</div><div className="row" style={{ gap: 4, marginTop: 4 }}>{r.users.slice(0, 8).map((u) => <button key={u.id} className="btn sm ghost" onClick={() => go("users", { q: u.username })}>{u.username}</button>)}</div></div><Badge tone="amber">{r.users.length}人</Badge></div>)}</div>}</div>
+      <div className="card card-pad"><div className="card-head"><div><h2>多数のIPを使うユーザー</h2><div className="sub">5個以上(回線切替・VPNなど)</div></div></div>
+        {!d.many.length ? <Empty icon="check" text="該当なし" /> : <div className="table-wrap" style={{ boxShadow: "none" }}><table><thead><tr><th>ユーザー</th><th style={{ textAlign: "right" }}>IP数</th></tr></thead><tbody>{d.many.map((r) => <tr key={r.username} className="click" onClick={() => go("users", { q: r.username })}><td><b>{r.username}</b><div className="sub mono">{r.last_login_ip}</div></td><td style={{ textAlign: "right" }}>{r.count}</td></tr>)}</tbody></table></div>}</div>
+    </div>
+    <div className="card card-pad"><div className="card-head"><h2>国別アクセス</h2></div>
+      {!d.countries.length ? <Empty icon="globe" text="データなし(Vercelの位置ヘッダーが付くとAxiomに記録されます)" /> : <div className="bars">{d.countries.map((r) => <div key={r.country || "-"} className="bar-row" style={{ gridTemplateColumns: "80px 1fr 60px" }}><b>{r.country || "不明"}</b><div className="bar"><i style={{ width: `${(r.n / d.countries[0].n) * 100}%` }} /></div><span className="sub" style={{ textAlign: "right" }}>{num(r.n)}</span></div>)}</div>}</div>
+  </>;
+}
+
+
+/* =========================================================
+   管理ログ(管理サイトのログイン履歴・操作履歴)
+   ========================================================= */
+function shortUA(ua = "") {
+  const os = /iPhone|iPad/.test(ua) ? "iOS" : /Android/.test(ua) ? "Android" : /Windows/.test(ua) ? "Windows" : /Mac OS X/.test(ua) ? "macOS" : /Linux/.test(ua) ? "Linux" : "";
+  const br = /Edg\//.test(ua) ? "Edge" : /OPR\//.test(ua) ? "Opera" : /Firefox\//.test(ua) ? "Firefox" : /Chrome\//.test(ua) ? "Chrome" : /Safari\//.test(ua) ? "Safari" : "";
+  return [br, os].filter(Boolean).join(" / ") || (ua ? ua.slice(0, 30) : "");
+}
+function opDetail(r) {
+  const p = [];
+  if (r.username) p.push(r.username);
+  if (r.key) p.push(`${r.key}=${typeof r.value === "object" ? JSON.stringify(r.value) : r.value}`);
+  if (r.patch) p.push(typeof r.patch === "object" ? JSON.stringify(r.patch) : r.patch);
+  if (r.ip && String(r.type).startsWith("admin_ip")) p.push(r.ip);
+  if (r.minutes != null) p.push(`${r.minutes}分`);
+  if (r.accounts) p.push(`アカウント: ${[].concat(r.accounts).join(", ")}`);
+  if (r.post_id) p.push(`投稿ID ${r.post_id}`);
+  if (r.reason) p.push(r.reason);
+  return p.join("  ");
+}
+
+export function Audit() {
+  const { toast, confirm } = useUI();
+  const [tab, setTab] = useState("login"); const [hours, setHours] = useState(168);
+  const kind = tab === "login" ? "adminlogin" : "adminops";
+  const { data, loading, error, reload } = useLoad(() => api(`/api/admin/axiom?kind=${kind}&hours=${hours}`), [kind, hours]);
+  const { data: me } = useLoad(() => api("/api/admin/whoami"));
+  const rows = data?.rows || [];
+  const day = Date.now() - 86400000;
+  const fails = rows.filter((r) => r.type === "admin_login_failed" && new Date(r._time).getTime() > day).length;
+  const lockedNow = rows.filter((r) => r.type === "admin_login_locked" && new Date(r._time).getTime() > day).length;
+  const lastOk = rows.find((r) => r.type === "admin_login_success");
+  const ban = async (ip) => {
+    if (!(await confirm({ title: `${ip} をBANしますか?`, danger: true, okText: "24時間BAN", body: "このIPからのGather本体・管理サイトへのアクセスを24時間止めます。" }))) return;
+    try { await api("/api/admin/ip-bans", "POST", { ip, minutes: 1440, reason: "管理サイトへの不正ログイン試行" }); toast("IPをBANしました"); } catch (e) { toast(e.message, "err"); }
+  };
+  return <>
+    <div className="row">
+      <Seg value={tab} onChange={setTab} options={[["login", "ログイン履歴"], ["ops", "操作履歴"]]} />
+      <select className="select" style={{ width: 150 }} value={hours} onChange={(e) => setHours(Number(e.target.value))}>{[[24, "直近24時間"], [168, "直近7日"], [720, "直近30日"]].map(([h, l]) => <option key={h} value={h}>{l}</option>)}</select>
+      <button className="btn" onClick={reload}><Icon name="refresh" size={15} />更新</button>
+      {me && <span className="sub" style={{ marginLeft: "auto" }}>現在のIP: <span className="mono">{me.ip}</span></span>}
+    </div>
+    <ErrorBox text={error} />
+    {tab === "login" && data && <div className="grid g3">
+      <div className="card stat"><div className="label">直近24時間のログイン失敗</div><div className="num" style={{ color: fails ? "var(--red)" : undefined }}>{fails}</div>{fails >= 5 && <div className="sub" style={{ color: "var(--red)" }}>失敗が多発しています。IPを確認してください</div>}</div>
+      <div className="card stat"><div className="label">直近24時間のロック</div><div className="num">{lockedNow}</div></div>
+      <div className="card stat"><div className="label">最後のログイン成功</div><div style={{ fontWeight: 700 }}>{lastOk ? ago(lastOk._time) : "-"}</div><div className="sub mono">{lastOk?.ip || ""}</div></div>
+    </div>}
+    {loading && !data ? <Skeleton rows={6} /> : !rows.length ? <div className="card"><Empty icon="lock" text="該当するログがありません" /></div> : (
+      <div className="table-wrap"><table>
+        <thead><tr><th>時刻</th><th>種別</th><th>IP</th>{tab === "login" ? <><th className="hide-sm">場所</th><th className="hide-sm">端末</th></> : <th>内容</th>}<th /></tr></thead>
+        <tbody>{rows.map((r, i) => { const [label, tone] = typeInfo(r.type); const mine = me && r.ip === me.ip; const bad = r.type === "admin_login_failed" || r.type === "admin_login_locked"; return (
+          <tr key={i}>
+            <td style={{ whiteSpace: "nowrap" }} title={fmtFull(r._time)}>{fmt(r._time)}</td>
+            <td><Badge tone={tone}>{label}</Badge></td>
+            <td className="mono">{r.ip || ""}{mine && <> <Badge tone="blue">あなた</Badge></>}</td>
+            {tab === "login" ? <>
+              <td className="hide-sm">{[r.country, r.region, r.city].filter(Boolean).join(" / ")}</td>
+              <td className="hide-sm sub">{shortUA(r.ua || r.user_agent)}</td>
+            </> : <td className="sub mono" style={{ maxWidth: 360 }}>{opDetail(r)}</td>}
+            <td style={{ textAlign: "right" }}>{tab === "login" && bad && r.ip && !mine && <button className="btn sm soft-danger" onClick={() => ban(r.ip)}>IP BAN</button>}</td>
+          </tr>); })}</tbody>
+      </table></div>
+    )}
+    <div className="sub">{tab === "login" ? "管理サイトのログインは5回失敗すると15分間ロックされ、その履歴もここに残ります。" : "管理サイトで行ったユーザー変更・設定変更・BAN・投稿などの記録です。"}(最大300件)</div>
   </>;
 }
