@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { guard, fail } from "@/lib/api";
 import { db } from "@/lib/db";
 import { axiomIngest } from "@/lib/axiom";
+import { usersByIp } from "@/lib/usersearch";
+import { isIpLike } from "@/lib/logkinds";
 
 const FIELDS = "id,username,role,verified,ban_until,ban_count,points,icon_url";
 const PERM_UNTIL = "2099-12-31T00:00:00.000Z";
@@ -10,6 +12,7 @@ export const GET = guard(async (req) => {
   const sp = new URL(req.url).searchParams;
   const q = (sp.get("q") || "").trim().replace(/[%,()]/g, "");
   const filter = sp.get("filter") || "all";
+  if (q && isIpLike(q)) return NextResponse.json({ users: await usersByIp(q), ipSearch: q }); // IPで検索
   let query = db().from("users").select(FIELDS).order("username", { ascending: true }).limit(60);
   if (q) query = query.ilike("username", `%${q}%`);
   if (filter === "banned") query = query.gt("ban_until", new Date().toISOString());

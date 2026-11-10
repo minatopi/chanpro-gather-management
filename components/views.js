@@ -32,7 +32,7 @@ export function Dashboard({ go }) {
       <Stat icon="flag" tone="amber" label="未対応の報告・通報" value={unresolved} onClick={() => go("reports")} />
     </div>
     <div className="grid g2">
-      {[["login_enabled", "ログイン"], ["register_enabled", "新規アカウント作成"]].map(([k, label]) => (
+      {[["login_enabled", "ログイン"], ["register_enabled", "新規アカウント作成"], ["admin_login_enabled", "管理者ログイン"], ["server_enabled", "サーバー全体"]].map(([k, label]) => (
         <div key={k} className="card card-pad row" style={{ justifyContent: "space-between" }}>
           <div><div style={{ fontWeight: 700 }}>{label}</div><div className="sub">{s[k] === false ? "現在停止しています" : "通常どおり利用できます"}</div></div>
           <div className="row"><Badge tone={s[k] === false ? "red" : "green"} dot>{s[k] === false ? "停止中" : "稼働中"}</Badge><button className="btn sm" onClick={() => go("settings")}>変更</button></div>
@@ -186,16 +186,17 @@ export function Users({ go, params }) {
   const users = data?.users || [];
   return <>
     <div className="row">
-      <SearchBox value={text} onChange={setText} placeholder="ユーザー名で検索" />
+      <SearchBox value={text} onChange={setText} placeholder="ユーザー名またはIPで検索" />
       <Seg value={filter} onChange={setFilter} options={[["all", "すべて"], ["verified", "公式"], ["staff", "管理者"], ["banned", "BAN中"]]} />
     </div>
     <ErrorBox text={error} />
+    {data?.ipSearch && <div className="notice info"><Icon name="info" /><span>IP <span className="mono">{data.ipSearch}</span> を使ったことのあるユーザー(ログイン履歴・過去30日のAxiomログ)</span></div>}
     {loading && !data ? <Skeleton rows={6} /> : !users.length ? <div className="card"><Empty icon="users" text="該当するユーザーがいません" /></div> : (
       <div className="table-wrap"><table>
         <thead><tr><th>ユーザー</th><th>権限</th><th>状態</th><th className="hide-sm" style={{ textAlign: "right" }}>ポイント</th></tr></thead>
         <tbody>{users.map((u) => (
           <tr key={u.id} className="click" onClick={() => setSel(u)}>
-            <td><div className="row" style={{ gap: 12, flexWrap: "nowrap" }}><Avatar name={u.username} src={u.icon_url} /><b>{u.username}</b>{u.verified && <span style={{ color: "var(--brand)", display: "inline-flex" }} title="公式バッジ"><Icon name="badge" size={16} /></span>}</div></td>
+            <td><div className="row" style={{ gap: 12, flexWrap: "nowrap" }}><Avatar name={u.username} src={u.icon_url} /><b>{u.username}</b>{u.matched?.map((m) => <Badge key={m} tone="violet">{m === "log" ? "ログ一致" : m === "last" ? "最終IP" : "IP履歴"}</Badge>)}{u.verified && <span style={{ color: "var(--brand)", display: "inline-flex" }} title="公式バッジ"><Icon name="badge" size={16} /></span>}</div></td>
             <td><Badge tone={u.role === "developer" ? "violet" : u.role === "admin" ? "blue" : "gray"}>{u.role}</Badge></td>
             <td>{isBanned(u) ? <Badge tone="red" dot>BAN中 {remaining(u.ban_until).text}</Badge> : <Badge tone="green" dot>通常</Badge>}</td>
             <td className="hide-sm" style={{ textAlign: "right" }}>{(u.points ?? 0).toLocaleString()}</td>
@@ -348,6 +349,13 @@ export function Reports({ go }) {
    アクセスログ(Axiom)
    ========================================================= */
 const LOG_SKIP = new Set(["_time", "_sysTime", "_rowId", "type", "username", "ip", "ip_hash", "source", "user_id", "device_hash", "country", "region", "city", "feature", "status"]);
+const REASON_LABEL = { user_not_found: "ユーザー名が存在しない", wrong_password: "パスワード違い", account_banned: "アカウントBAN中", device_banned: "端末BAN", ip_banned: "IP BAN", rate_limited: "アクセス集中", login_disabled: "ログイン停止中", admin_login_disabled: "管理者ログイン停止中", register_disabled: "新規作成停止中", banned_device_account: "BANアカウントの端末", device_limit: "端末のアカウント上限", username_taken: "ユーザー名が使用済み", invalid_input: "入力不正", error: "その他のエラー" };
+const logBadge = (r) => {
+  if (r.type === "feature_status") return [`${r.feature || "?"}:${r.status || ""}`, STATUS_TONE[r.status] || "gray"];
+  const [l, t] = typeInfo(r.type);
+  return ["login_failed", "register_failed", "login_blocked"].includes(r.type) && r.reason ? [`${l}: ${REASON_LABEL[r.reason] || r.reason}`, t] : [l, t];
+};
+const isIp = (t) => /^(\d{1,3}\.){3}\d{1,3}$/.test(t) || (t.includes(":") && /^[0-9a-f:.]+$/i.test(t));
 const readsOf = (r) => {
   let x = r.reads;
   if (typeof x === "string") { try { x = JSON.parse(x); } catch { /* そのまま */ } }
@@ -356,7 +364,7 @@ const readsOf = (r) => {
 };
 const detailOf = (r) => {
   const isRead = r.type === "db_read_batch";
-  const rest = Object.entries(r).filter(([k, v]) => !LOG_SKIP.has(k) && !(isRead && (k === "reads" || k === "request_count")) && v != null && v !== "").map(([k, v]) => `${k}=${typeof v === "object" ? JSON.stringify(v) : String(v).slice(0, 90)}`).join("  ");
+  const rest = Object.entries(r).filter(([k, v]) => !LOG_SKIP.has(k) && !(isRead && (k === "reads" || k === "request_count")) && v != null && v !== "").map(([k, v]) => (k === "reason" && REASON_LABEL[v] ? `理由=${REASON_LABEL[v]}` : `${k}=${typeof v === "object" ? JSON.stringify(v) : String(v).slice(0, 90)}`)).join("  ");
   if (!isRead) return rest;
   const t = readsOf(r);
   return `DB読み込み${r.request_count ? ` ${r.request_count}件` : ""}${t ? `: ${t}` : ""}${rest ? "  " + rest : ""}`;
@@ -366,13 +374,13 @@ export function Logs({ params }) {
   const [kind, setKind] = useState(params?.kind || "login"); const [hours, setHours] = useState(24);
   const [text, setText] = useState(params?.username || ""); const username = useDebounced(text, 500);
   const [auto, setAuto] = useState(false);
-  const { data, loading, error, reload } = useLoad(() => api(`/api/admin/axiom?kind=${kind}&hours=${hours}&username=${encodeURIComponent(username)}`), [kind, hours, username]);
+  const { data, loading, error, reload } = useLoad(() => api(`/api/admin/axiom?kind=${kind}&hours=${hours}&${isIp(username) ? "ip" : "username"}=${encodeURIComponent(username)}`), [kind, hours, username]);
   useEffect(() => { if (!auto) return; const t = setInterval(reload, 20000); return () => clearInterval(t); }, [auto, reload]);
   const rows = data?.rows || [];
   return <>
     <div className="row">
       <Seg value={kind} onChange={setKind} options={[["login", "ログイン"], ["access", "アクセス"], ["activity", "ユーザー操作"], ["error", "エラー"], ["ip", "IP・端末制限"], ["status", "機能ステータス"], ["admin", "管理サイト"]]} />
-      <SearchBox value={text} onChange={setText} placeholder="ユーザー名で絞り込み" />
+      <SearchBox value={text} onChange={setText} placeholder="ユーザー名またはIPで絞り込み" />
       <select className="select" style={{ width: 140 }} value={hours} onChange={(e) => setHours(e.target.value)}>{[[1, "直近1時間"], [24, "直近24時間"], [72, "直近3日"], [168, "直近7日"], [720, "直近30日"]].map(([h, l]) => <option key={h} value={h}>{l}</option>)}</select>
       <label className="row sub" style={{ gap: 8 }}><Switch checked={auto} onChange={setAuto} />自動更新</label>
       <button className="btn" onClick={reload}><Icon name="refresh" size={15} />更新</button>
@@ -381,7 +389,7 @@ export function Logs({ params }) {
     {loading && !data ? <Skeleton rows={6} /> : !rows.length ? <div className="card"><Empty icon="list" text="該当するログがありません" /></div> : (
       <div className="table-wrap"><table>
         <thead><tr><th>時刻</th><th>種別</th><th>ユーザー</th><th>IP</th><th className="hide-sm">詳細</th></tr></thead>
-        <tbody>{rows.map((r, i) => { const [label, tone] = r.type === "feature_status" ? [`${r.feature || "?"}:${r.status || ""}`, STATUS_TONE[r.status] || "gray"] : typeInfo(r.type); return (
+        <tbody>{rows.map((r, i) => { const [label, tone] = logBadge(r); return (
           <tr key={i}>
             <td style={{ whiteSpace: "nowrap" }} title={fmtFull(r._time)}>{fmt(r._time)}</td>
             <td><Badge tone={tone}>{label}</Badge></td>
@@ -398,11 +406,11 @@ export function Logs({ params }) {
 /* =========================================================
    停止設定
    ========================================================= */
-function Control({ title, desc, enabledKey, msgKey, s, put }) {
+function Control({ title, desc, enabledKey, msgKey, s, put, warn }) {
   const { confirm } = useUI(); const on = s[enabledKey] !== false;
   const [msg, setMsg] = useState(s[msgKey] || ""); const dirty = msg !== (s[msgKey] || "");
   const toggle = async (v) => {
-    if (!v && !(await confirm({ title: `${title}を停止しますか?`, body: "一般ユーザーは利用できなくなります。admin / developer は影響を受けません。", danger: true, okText: "停止する" }))) return;
+    if (!v && !(await confirm({ title: `${title}を停止しますか?`, body: warn || "一般ユーザーは利用できなくなります。admin / developer は影響を受けません。", danger: true, okText: "停止する" }))) return;
     put(enabledKey, v);
   };
   return (
@@ -424,9 +432,12 @@ export function Settings() {
   if (error) return <ErrorBox text={error} />;
   const s = data.settings || {};
   return <>
+    {s.server_enabled === false && <div className="notice err"><Icon name="alert" />サーバー全体を停止中です。Gather APIへのすべての通信が拒否されています。</div>}
     <Control title="ログイン" desc="停止すると一般ユーザーはログインできません(ログイン済みセッションはそのまま使えます)" enabledKey="login_enabled" msgKey="login_disabled_message" s={s} put={put} />
-    <Control title="新規アカウント作成" desc="停止すると新しいアカウントを作れません" enabledKey="register_enabled" msgKey="register_disabled_message" s={s} put={put} />
-    <div className="notice info"><Icon name="info" />変更はGather APIに即時反映されます。停止中も admin / developer はログインできます。</div>
+    <Control title="新規アカウント作成" desc="停止すると新しいアカウントを作れません(BAN中のアカウント・BAN端末からは、この設定に関係なく作成できません)" enabledKey="register_enabled" msgKey="register_disabled_message" s={s} put={put} />
+    <Control title="管理者のログイン" desc="停止すると admin / developer もGatherにログインできなくなります(管理サイトは使えます)" enabledKey="admin_login_enabled" msgKey="admin_login_disabled_message" s={s} put={put} warn="admin / developer もGatherにログインできなくなります。管理サイトからいつでも再開できます。" />
+    <Control title="サーバー全体(全通信を拒否)" desc="停止するとGather APIへのすべてのリクエスト(ログイン済みの利用・読み込み・IP確認を含む)を拒否し、メンテナンス表示にします" enabledKey="server_enabled" msgKey="server_disabled_message" s={s} put={put} warn="Gather APIへのすべての通信が拒否され、全ユーザーが利用できなくなります。管理サイトは使えるので、ここから再開できます。" />
+    <div className="notice info"><Icon name="info" />変更はGather APIに反映されます(最大5秒ほどの遅れがあります)。停止・再開はAxiomの機能ステータスにも自動で記録されます。</div>
   </>;
 }
 
@@ -593,7 +604,7 @@ export function Analytics({ go }) {
   const t = d.totals || {}; const num = (v) => Number(v || 0).toLocaleString();
   const cards = [["access", "アクセス", "blue", "activity"], ["users", "アクティブユーザー", "green", "users"], ["login_ok", "ログイン成功", "green", "check"], ["login_fail", "ログイン失敗", "amber", "alert"], ["registered", "新規登録", "violet", "users"], ["errors", "APIエラー", "red", "alert"], ["posts", "投稿", "blue", "edit"], ["likes", "いいね", "green", "badge"]];
   return <>
-    <div className="row"><Seg value={hours} onChange={setHours} options={[[6, "6時間"], [24, "24時間"], [72, "3日"], [168, "7日"]]} /><button className="btn" onClick={reload}><Icon name="refresh" size={15} />更新</button></div>
+    <div className="row"><Seg value={hours} onChange={setHours} options={[[6, "6時間"], [24, "24時間"], [72, "3日"], [168, "7日"]]} /><button className="btn" onClick={reload}><Icon name="refresh" size={15} />更新</button><button className="btn primary" onClick={() => go("ai", { prompt: `直近${hours}時間のログを分析して、不審な点・エラー・ログイン失敗の傾向と、取るべき対応を教えてください。` })}><Icon name="sparkle" size={15} />AIで分析</button></div>
     {d.errors?.length > 0 && <div className="notice warn"><Icon name="alert" /><span>一部のログを取得できませんでした: {d.errors[0]}{d.errors.length > 1 ? ` ほか${d.errors.length - 1}件` : ""}</span></div>}
     <div className="grid g4">{cards.map(([k, label, tone, icon]) => <Stat key={k} icon={icon} tone={tone} label={label} value={num(t[k])} />)}</div>
     <div className="card card-pad"><div className="card-head"><div><h2>アクセス数の推移</h2><div className="sub">{d.bin}ごと</div></div></div><StackedBars rows={d.timeline} series={[{ key: "access", color: "#2f5bff", label: "アクセス" }]} /></div>
@@ -604,6 +615,12 @@ export function Analytics({ go }) {
         {!d.actions.length ? <Empty icon="list" text="データなし" /> : <div className="table-wrap" style={{ boxShadow: "none" }}><table><thead><tr><th>操作</th><th style={{ textAlign: "right" }}>回数</th><th className="hide-sm" style={{ textAlign: "right" }}>平均</th><th className="hide-sm" style={{ textAlign: "right" }}>最大</th></tr></thead><tbody>{d.actions.map((r) => <tr key={r.action}><td className="mono">{r.action}</td><td style={{ textAlign: "right" }}>{num(r.n)}</td><td className="hide-sm" style={{ textAlign: "right" }}>{Math.round(r.avg_ms || 0)}ms</td><td className="hide-sm" style={{ textAlign: "right" }}>{Math.round(r.max_ms || 0)}ms</td></tr>)}</tbody></table></div>}</div>
       <div className="card card-pad"><div className="card-head"><h2>エラーの内訳</h2></div>
         {!d.errorsBy.length ? <Empty icon="check" text="エラーはありません" /> : <div className="table-wrap" style={{ boxShadow: "none" }}><table><thead><tr><th>操作</th><th>HTTP</th><th style={{ textAlign: "right" }}>回数</th></tr></thead><tbody>{d.errorsBy.map((r, i) => <tr key={i}><td className="mono">{r.action || "-"}</td><td><Badge tone="red">{r.status}</Badge></td><td style={{ textAlign: "right" }}>{num(r.n)}</td></tr>)}</tbody></table></div>}</div>
+    </div>
+    <div className="grid g2">
+      <div className="card card-pad"><div className="card-head"><div><h2>ログイン失敗の理由</h2><div className="sub">どんな理由で失敗しているか</div></div></div>
+        {!d.loginReasons?.length ? <Empty icon="check" text="該当なし(APIの新しい版を反映すると記録されます)" /> : <div className="bars">{d.loginReasons.map((r) => <div key={r.reason || "-"} className="bar-row" style={{ gridTemplateColumns: "150px 1fr 44px" }}><span>{REASON_LABEL[r.reason] || r.reason || "不明"}</span><div className="bar"><i style={{ width: `${(r.n / Math.max(1, d.loginReasons[0].n)) * 100}%` }} /></div><b style={{ textAlign: "right" }}>{r.n}</b></div>)}</div>}</div>
+      <div className="card card-pad"><div className="card-head"><div><h2>新規作成の失敗理由</h2><div className="sub">端末BAN・上限・重複など</div></div></div>
+        {!d.registerReasons?.length ? <Empty icon="check" text="該当なし" /> : <div className="bars">{d.registerReasons.map((r) => <div key={r.reason || "-"} className="bar-row" style={{ gridTemplateColumns: "150px 1fr 44px" }}><span>{REASON_LABEL[r.reason] || r.reason || "不明"}</span><div className="bar"><i style={{ width: `${(r.n / Math.max(1, d.registerReasons[0].n)) * 100}%` }} /></div><b style={{ textAlign: "right" }}>{r.n}</b></div>)}</div>}</div>
     </div>
     <div className="grid g2">
       <div className="card card-pad"><div className="card-head"><h2>アクセスの多いIP</h2></div>

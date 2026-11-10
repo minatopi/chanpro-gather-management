@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { Assistant } from "@/components/ai";
 import { UIProvider, Icon, api } from "@/components/ui";
 import { Dashboard, Users, Bans, Reports, Logs, Settings, Geo, Status, PostAs, Analytics, Audit } from "@/components/views";
 
@@ -12,6 +13,7 @@ const NAV = [
   ["reports", "報告・通報", "flag", "ユーザーから届いた報告と通報", Reports],
   ["geo", "アクセスマップ", "globe", "どこからアクセスが多いか(日本・世界)", Geo],
   ["logs", "アクセスログ", "list", "ログイン・アクセス・IP制限・機能ステータス(Axiom)", Logs],
+  ["ai", "AIアシスタント", "sparkle", "OpenAIでログを分析・操作を提案(許可制)", Assistant],
   ["audit", "管理ログ", "lock", "管理サイトのログイン履歴と操作履歴", Audit],
   ["status", "機能ステータス", "activity", "いいね等の停止・復旧をAxiomに記録", Status],
   ["settings", "停止設定", "power", "ログイン・新規作成の停止", Settings],

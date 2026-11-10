@@ -13,7 +13,10 @@ export const GET = guard(async (req) => {
   const jobs = {
     totals: () => q(`summarize access=countif(type=="access"), users=dcountif(username, type=="access"), login_ok=countif(type=="login_success"), login_fail=countif(type=="login_failed"), registered=countif(type=="register_created"), errors=countif(type=="api_error"), posts=countif(type=="post_created"), replies=countif(type=="reply_created"), likes=countif(type=="like_toggled"), dms=countif(type=="dm_sent")`),
     timeline: () => q(`summarize access=countif(type=="access"), login_ok=countif(type=="login_success"), login_fail=countif(type=="login_failed"), errors=countif(type=="api_error"), posts=countif(type=="post_created") by bin(_time, ${bin}) | order by _time asc`),
-    actions: () => q(`where type=="access" | summarize n=count(), avg_ms=avg(ms), max_ms=max(ms) by action | order by n desc | take 12`),
+    // ms フィールドがまだ無いデータでも落ちないようにフォールバック
+    actions: async () => { try { return await q(`where type=="access" | summarize n=count(), avg_ms=avg(ms), max_ms=max(ms) by action | order by n desc | take 12`); } catch { return q(`where type=="access" | summarize n=count() by action | order by n desc | take 12`); } },
+    loginReasons: () => q(`where type=="login_failed" | summarize n=count() by reason | order by n desc | take 12`).catch(() => []),
+    registerReasons: () => q(`where type=="register_failed" | summarize n=count() by reason | order by n desc | take 12`).catch(() => []),
     topIps: () => q(`where type=="access" | summarize n=count(), users=dcount(username) by ip | order by n desc | take 12`),
     failIps: () => q(`where type=="login_failed" | summarize n=count(), names=dcount(username), last=max(_time) by ip | where n >= 3 | order by n desc | take 12`),
     errorsBy: () => q(`where type=="api_error" | summarize n=count() by action, status | order by n desc | take 12`),
@@ -43,6 +46,6 @@ export const GET = guard(async (req) => {
     hours, bin, errors, dbError, shared, many,
     totals: out.totals?.[0] || null,
     timeline: (out.timeline || []).map((r) => ({ t: timeOf(r), access: Number(r.access || 0), login_ok: Number(r.login_ok || 0), login_fail: Number(r.login_fail || 0), errors: Number(r.errors || 0), posts: Number(r.posts || 0) })),
-    actions: out.actions || [], topIps: out.topIps || [], failIps: out.failIps || [], errorsBy: out.errorsBy || [], countries: out.countries || [],
+    actions: out.actions || [], loginReasons: out.loginReasons || [], registerReasons: out.registerReasons || [], topIps: out.topIps || [], failIps: out.failIps || [], errorsBy: out.errorsBy || [], countries: out.countries || [],
   });
 });

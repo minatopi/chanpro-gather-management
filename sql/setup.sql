@@ -58,3 +58,17 @@ alter table public.users add column if not exists last_login_ip text;
 alter table public.users add column if not exists ip_list jsonb not null default '[]'::jsonb;
 create index if not exists users_ip_list_gin on public.users using gin (ip_list jsonb_path_ops);
 notify pgrst, 'reload schema';
+
+-- ===== v3: 管理者ログイン停止 / サーバー全体停止 / IP検索 =====
+insert into public.app_settings (key, value) values
+  ('admin_login_enabled', 'true'), ('server_enabled', 'true'),
+  ('admin_login_disabled_message', '"現在、管理者のログインを停止しています"'),
+  ('server_disabled_message', '"現在サーバーを停止しています。しばらくしてからもう一度お試しください"')
+on conflict (key) do nothing;
+
+-- ログインしたIPの保存(Gather APIが users.last_login_ip / users.ip_list を更新します)
+alter table public.users add column if not exists last_login_ip text;
+alter table public.users add column if not exists ip_list jsonb not null default '[]'::jsonb;
+create index if not exists users_last_login_ip_idx on public.users (last_login_ip);
+create index if not exists users_ip_list_gin on public.users using gin (ip_list jsonb_path_ops);
+notify pgrst, 'reload schema';

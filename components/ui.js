@@ -35,6 +35,7 @@ export const TYPE_INFO = {
   login_success: ["ログイン成功", "green"], login_failed: ["ログイン失敗", "red"], login_blocked: ["ログイン停止中", "amber"],
   register_created: ["新規作成", "blue"], register_blocked: ["新規作成停止中", "amber"], access: ["アクセス", "gray"],
   feature_status: ["機能ステータス", "violet"],
+  register_failed: ["新規作成失敗", "red"], server_blocked: ["全面停止で拒否", "red"], image_upload: ["画像アップロード", "blue"], admin_ai_query: ["管理 AI質問", "violet"], admin_ai_action: ["管理 AI操作", "violet"],
   db_read_batch: ["DB読み込み", "gray"], admin_login_locked: ["管理ログインロック", "amber"],
   post_created: ["投稿", "blue"], post_deleted: ["投稿削除", "gray"], reply_created: ["返信", "blue"], reply_deleted: ["返信削除", "gray"],
   like_toggled: ["いいね", "green"], repost_toggled: ["リポスト", "green"], bookmark_toggled: ["ブックマーク", "gray"], poll_voted: ["投票", "gray"],
@@ -62,6 +63,7 @@ const ICONS = {
   copy: "M9 9h11v11H9z|M5 15V4h11",
   chart: "M3 3v18h18|M7 15l4-4 3 3 5-6",
   lock: "M5 11h14v10H5z|M8 11V7a4 4 0 0 1 8 0v4",
+  sparkle: "M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z|M19 16v4M17 18h4",
   plus: "M12 5v14M5 12h14", minus: "M5 12h14", edit: "M12 20h9|M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z", trash: "M3 6h18|M8 6V4h8v2|M6 6l1 14h10l1-14",
   maximize: "M8 3H5a2 2 0 0 0-2 2v3|M21 8V5a2 2 0 0 0-2-2h-3|M3 16v3a2 2 0 0 0 2 2h3|M16 21h3a2 2 0 0 0 2-2v-3", info: "M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18|M12 16v-4M12 8h.01",
 };
