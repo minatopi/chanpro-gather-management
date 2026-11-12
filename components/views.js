@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { GeoPanel } from "./geomap";
+import { FEATURES, FEATURE_GROUPS } from "@/lib/features";
 import { api, fmt, fmtFull, ago, remaining, isBanned, typeInfo, STATUS_TONE, Icon, Badge, Avatar, Switch, Seg, Empty, Skeleton, ErrorBox, SearchBox, Drawer, useUI, useLoad, useDebounced } from "./ui";
 
 /* =========================================================
@@ -22,9 +23,11 @@ export function Dashboard({ go }) {
   if (loading && !d) return <Skeleton rows={5} />;
   if (error) return <ErrorBox text={error} />;
   const s = d.settings || {};
+  const stoppedFeatures = FEATURES.filter((f) => s["feature_" + f.key] === false);
   const max = Math.max(1, ...(d.activity || []).map((a) => Number(a.n) || 0));
   const unresolved = (d.openReports || 0) + (d.openUserReports || 0);
   return <>
+    {stoppedFeatures.length > 0 && <div className="notice warn"><Icon name="alert" /><span>停止中の機能({stoppedFeatures.length}): {stoppedFeatures.map((f) => f.label).join("・")} <button className="btn sm" style={{ marginLeft: 8 }} onClick={() => go("settings")}>停止設定を開く</button></span></div>}
     <div className="grid g4">
       <Stat icon="users" tone="blue" label="ユーザー数" value={d.users} hint={`公式バッジ ${d.verified ?? "-"}人`} onClick={() => go("users")} />
       <Stat icon="ban" tone="red" label="BAN中アカウント" value={d.banned} onClick={() => go("users", { filter: "banned" })} />
@@ -184,6 +187,10 @@ export function Users({ go, params }) {
   const [filter, setFilter] = useState(params?.filter || "all"); const [sel, setSel] = useState(null);
   const { data, loading, error, reload } = useLoad(() => api(`/api/admin/users?q=${encodeURIComponent(q)}&filter=${filter}`), [q, filter]);
   const users = data?.users || [];
+  const gmap = new Map((data?.groups || []).map((g) => [g.id, g]));
+  const GROUP_COLORS = ["#f0a43a", "#6d4aff", "#12a150", "#2f5bff", "#d946a8", "#0ea5b7"];
+  const items = []; const seenG = new Set();
+  for (const u of users) { if (u.group && !seenG.has(u.group)) { seenG.add(u.group); items.push({ head: gmap.get(u.group) }); } items.push({ u }); }
   return <>
     <div className="row">
       <SearchBox value={text} onChange={setText} placeholder="ユーザー名またはIPで検索" />
@@ -194,13 +201,15 @@ export function Users({ go, params }) {
     {loading && !data ? <Skeleton rows={6} /> : !users.length ? <div className="card"><Empty icon="users" text="該当するユーザーがいません" /></div> : (
       <div className="table-wrap"><table>
         <thead><tr><th>ユーザー</th><th>権限</th><th>状態</th><th className="hide-sm" style={{ textAlign: "right" }}>ポイント</th></tr></thead>
-        <tbody>{users.map((u) => (
-          <tr key={u.id} className="click" onClick={() => setSel(u)}>
-            <td><div className="row" style={{ gap: 12, flexWrap: "nowrap" }}><Avatar name={u.username} src={u.icon_url} /><b>{u.username}</b>{u.matched?.map((m) => <Badge key={m} tone="violet">{m === "log" ? "ログ一致" : m === "last" ? "最終IP" : "IP履歴"}</Badge>)}{u.verified && <span style={{ color: "var(--brand)", display: "inline-flex" }} title="公式バッジ"><Icon name="badge" size={16} /></span>}</div></td>
+        <tbody>{items.map((it, i) => it.head ? (
+          <tr key={"g" + i} className="grp-head"><td colSpan={4}><div className="row" style={{ gap: 8 }}><Badge tone="amber">裏垢の可能性</Badge><b>{it.head.members}件のアカウントが関連しています</b><span className="sub">{(it.head.reasons || []).join(" / ")}{it.head.strong ? "" : "(IPのみ・確度低)"}</span></div></td></tr>
+        ) : ((u) => (
+          <tr key={u.id} className={"click" + (u.group ? " grp" : "")} style={u.group ? { "--gc": GROUP_COLORS[(u.group - 1) % GROUP_COLORS.length] } : undefined} onClick={() => setSel(u)}>
+            <td><div className="row" style={{ gap: 12, flexWrap: "nowrap" }}><Avatar name={u.username} src={u.icon_url} /><b>{u.username}</b>{u.related && <Badge tone="gray">関連(検索外)</Badge>}{u.matched?.map((m) => <Badge key={m} tone="violet">{m === "log" ? "ログ一致" : m === "last" ? "最終IP" : "IP履歴"}</Badge>)}{u.verified && <span style={{ color: "var(--brand)", display: "inline-flex" }} title="公式バッジ"><Icon name="badge" size={16} /></span>}</div></td>
             <td><Badge tone={u.role === "developer" ? "violet" : u.role === "admin" ? "blue" : "gray"}>{u.role}</Badge></td>
             <td>{isBanned(u) ? <Badge tone="red" dot>BAN中 {remaining(u.ban_until).text}</Badge> : <Badge tone="green" dot>通常</Badge>}</td>
             <td className="hide-sm" style={{ textAlign: "right" }}>{(u.points ?? 0).toLocaleString()}</td>
-          </tr>))}</tbody>
+          </tr>))(it.u))}</tbody>
       </table></div>
     )}
     {sel && <UserPanel key={sel.id} user={sel} go={go} onClose={() => setSel(null)} onChanged={() => reload()} />}
@@ -424,6 +433,49 @@ function Control({ title, desc, enabledKey, msgKey, s, put, warn }) {
     </div>
   );
 }
+function FeatureSettings({ s, put }) {
+  const { confirm } = useUI();
+  const [drafts, setDrafts] = useState({});
+  const stopped = FEATURES.filter((f) => s["feature_" + f.key] === false);
+  const toggle = async (f, v) => {
+    if (!v && !(await confirm({ title: `「${f.label}」を停止しますか?`, danger: true, okText: "停止する", body: `${f.desc}\n一般ユーザーはこの機能を使えなくなります(admin / developer は影響を受けません)。停止は機能ステータスにも自動で記録されます。` }))) return;
+    put("feature_" + f.key, v);
+  };
+  const resumeAll = async () => {
+    if (!(await confirm({ title: `停止中の${stopped.length}機能をすべて再開しますか?`, okText: "すべて再開" }))) return;
+    for (const f of stopped) await put("feature_" + f.key, true);
+  };
+  return (
+    <div className="card card-pad">
+      <div className="card-head">
+        <div><h2>機能ごとの設定</h2><div className="sub">停止した機能は、利用者の操作を拒否します。停止・再開はAxiomの「機能ステータス」に自動で記録されます</div></div>
+        {stopped.length > 0 && <button className="btn sm" onClick={resumeAll}>停止中をすべて再開({stopped.length})</button>}
+      </div>
+      {FEATURE_GROUPS.map((g) => (
+        <div key={g} style={{ marginTop: 14 }}>
+          <div className="sec-title">{g}</div>
+          {FEATURES.filter((f) => f.group === g).map((f) => {
+            const on = s["feature_" + f.key] !== false; const mk = `feature_${f.key}_message`; const cur = drafts[mk] ?? (s[mk] || "");
+            return (
+              <div key={f.key} className={`feat ${on ? "" : "off"}`}>
+                <div style={{ minWidth: 0 }}>
+                  <div className="row" style={{ gap: 8 }}><b>{f.label}</b>{!on && <Badge tone="red" dot>停止中</Badge>}</div>
+                  <div className="sub">{f.desc}</div>
+                  {!on && <div className="row" style={{ marginTop: 8, flexWrap: "nowrap" }}>
+                    <input className="input" value={cur} onChange={(e) => setDrafts({ ...drafts, [mk]: e.target.value })} placeholder="停止中に表示するメッセージ(空欄なら既定の文)" />
+                    <button className="btn sm primary" disabled={cur === (s[mk] || "")} onClick={() => put(mk, cur)}>保存</button>
+                  </div>}
+                </div>
+                <Switch checked={on} onChange={(v) => toggle(f, v)} />
+              </div>
+            );
+          })}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function Settings() {
   const { toast } = useUI();
   const { data, loading, error, reload } = useLoad(() => api("/api/admin/settings"));
@@ -437,6 +489,7 @@ export function Settings() {
     <Control title="新規アカウント作成" desc="停止すると新しいアカウントを作れません(BAN中のアカウント・BAN端末からは、この設定に関係なく作成できません)" enabledKey="register_enabled" msgKey="register_disabled_message" s={s} put={put} />
     <Control title="管理者のログイン" desc="停止すると admin / developer もGatherにログインできなくなります(管理サイトは使えます)" enabledKey="admin_login_enabled" msgKey="admin_login_disabled_message" s={s} put={put} warn="admin / developer もGatherにログインできなくなります。管理サイトからいつでも再開できます。" />
     <Control title="サーバー全体(全通信を拒否)" desc="停止するとGather APIへのすべてのリクエスト(ログイン済みの利用・読み込み・IP確認を含む)を拒否し、メンテナンス表示にします" enabledKey="server_enabled" msgKey="server_disabled_message" s={s} put={put} warn="Gather APIへのすべての通信が拒否され、全ユーザーが利用できなくなります。管理サイトは使えるので、ここから再開できます。" />
+    <FeatureSettings s={s} put={put} />
     <div className="notice info"><Icon name="info" />変更はGather APIに反映されます(最大5秒ほどの遅れがあります)。停止・再開はAxiomの機能ステータスにも自動で記録されます。</div>
   </>;
 }

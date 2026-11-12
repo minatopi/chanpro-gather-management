@@ -1,8 +1,9 @@
 "use client";
 import { useState } from "react";
 import { Assistant } from "@/components/ai";
+import { Logs } from "@/components/logs";
 import { UIProvider, Icon, api } from "@/components/ui";
-import { Dashboard, Users, Bans, Reports, Logs, Settings, Geo, Status, PostAs, Analytics, Audit } from "@/components/views";
+import { Dashboard, Users, Bans, Reports, Settings, Geo, Status, PostAs, Analytics, Audit } from "@/components/views";
 
 const NAV = [
   ["dashboard", "ダッシュボード", "home", "全体の状況をひと目で確認", Dashboard],

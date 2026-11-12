@@ -35,6 +35,7 @@ export const TYPE_INFO = {
   login_success: ["ログイン成功", "green"], login_failed: ["ログイン失敗", "red"], login_blocked: ["ログイン停止中", "amber"],
   register_created: ["新規作成", "blue"], register_blocked: ["新規作成停止中", "amber"], access: ["アクセス", "gray"],
   feature_status: ["機能ステータス", "violet"],
+  feature_blocked: ["機能停止で拒否", "amber"], account_deleted: ["アカウント削除", "red"],
   register_failed: ["新規作成失敗", "red"], server_blocked: ["全面停止で拒否", "red"], image_upload: ["画像アップロード", "blue"], admin_ai_query: ["管理 AI質問", "violet"], admin_ai_action: ["管理 AI操作", "violet"],
   db_read_batch: ["DB読み込み", "gray"], admin_login_locked: ["管理ログインロック", "amber"],
   post_created: ["投稿", "blue"], post_deleted: ["投稿削除", "gray"], reply_created: ["返信", "blue"], reply_deleted: ["返信削除", "gray"],
