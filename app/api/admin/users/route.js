@@ -2,9 +2,8 @@ import { NextResponse } from "next/server";
 import { guard, fail } from "@/lib/api";
 import { db } from "@/lib/db";
 import { axiomIngest } from "@/lib/axiom";
-import { usersByIp } from "@/lib/usersearch";
+import { searchUsers, detectMode } from "@/lib/usersearch";
 import { annotateAlts } from "@/lib/altgroups";
-import { isIpLike } from "@/lib/logkinds";
 
 const FIELDS = "id,username,role,verified,ban_until,ban_count,points,icon_url";
 const PERM_UNTIL = "2099-12-31T00:00:00.000Z";
@@ -14,7 +13,17 @@ export const GET = guard(async (req) => {
   const q = (sp.get("q") || "").trim().replace(/[%,()]/g, "");
   const filter = sp.get("filter") || "all";
   const withAlts = async (users, extra = {}) => { try { return NextResponse.json({ ...(await annotateAlts(users)), ...extra }); } catch { return NextResponse.json({ users, groups: [], ...extra }); } };
-  if (q && isIpLike(q)) return withAlts(await usersByIp(q), { ipSearch: q }); // IPで検索
+  // 検索(ユーザー名の部分一致以外: 似た名前 / IP / 端末 / ID)
+  const mode = sp.get("mode") || "auto";
+  const m = q ? (mode === "auto" ? detectMode(q) : mode) : "name";
+  if (q && m !== "name") {
+    let { users } = await searchUsers({ q, mode: m });
+    const now = Date.now();
+    if (filter === "banned") users = users.filter((u) => u.ban_until && new Date(u.ban_until).getTime() > now);
+    if (filter === "verified") users = users.filter((u) => u.verified);
+    if (filter === "staff") users = users.filter((u) => ["admin", "developer"].includes(u.role));
+    return withAlts(users, { mode: m, search: q });
+  }
   let query = db().from("users").select(FIELDS).order("username", { ascending: true }).limit(60);
   if (q) query = query.ilike("username", `%${q}%`);
   if (filter === "banned") query = query.gt("ban_until", new Date().toISOString());
@@ -22,7 +31,7 @@ export const GET = guard(async (req) => {
   if (filter === "staff") query = query.in("role", ["admin", "developer"]);
   const { data, error } = await query;
   if (error) throw error;
-  return withAlts(data);
+  return withAlts(data, { mode: "name", search: q });
 });
 
 // body: { id, role?, verified?, banMinutes? }  banMinutes: 0=解除 / -1=無期限 / 1以上=分

@@ -206,3 +206,45 @@ tr.grp td:first-child{border-left:5px solid var(--gc,#f0c36d)}tr.grp{background:
 /* ---------- 機能ごとの停止設定 ---------- */
 .feat{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;padding:12px 4px;border-top:1px solid var(--line)}
 .feat:first-child{border-top:0}.feat.off{background:var(--red-soft);border-radius:10px;padding-left:12px;padding-right:12px}
+
+/* ======================= スマホ最適化(v5) ======================= */
+.tabbar{display:none}
+.sheet-wrap{display:none}
+@media(max-width:960px){
+  .app{display:block}
+  .side{display:none}
+  .tabbar{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:50;background:rgba(255,255,255,.97);backdrop-filter:blur(12px);border-top:1px solid var(--line);padding:6px 6px calc(6px + env(safe-area-inset-bottom));gap:2px}
+  .tabbar button{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;border:0;background:transparent;color:var(--muted);font-size:10.5px;font-weight:700;padding:6px 2px;border-radius:12px;cursor:pointer;min-width:0}
+  .tabbar button span{white-space:nowrap}
+  .tabbar button.active{color:var(--brand);background:var(--brand-soft)}
+  .topbar{position:sticky;top:0;padding:calc(10px + env(safe-area-inset-top)) 16px 10px}
+  .page{padding:14px 12px calc(92px + env(safe-area-inset-bottom));gap:14px}
+  .sheet-wrap{display:grid;align-items:end;padding:0;z-index:90}
+  .sheet{background:#fff;border-radius:20px 20px 0 0;padding:16px 16px calc(18px + env(safe-area-inset-bottom));box-shadow:var(--shadow-lg);animation:pop .18s;max-height:88vh;overflow-y:auto}
+  .sheet-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;font-size:16px}
+  .sheet-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+  .sheet-item{display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 6px;border:1px solid var(--line);border-radius:14px;background:var(--bg-soft);font-size:12px;font-weight:700;color:var(--text-2);cursor:pointer;text-align:center}
+  .sheet-item.active{background:var(--brand-soft);border-color:#cdd9ff;color:var(--brand)}
+}
+@media(max-width:640px){
+  /* 表をカード表示に */
+  .table-wrap{border:0;background:transparent;box-shadow:none;overflow:visible}
+  .table-wrap table,.table-wrap tbody,.table-wrap tr,.table-wrap td{display:block;width:100%}
+  .table-wrap thead{display:none}
+  .table-wrap tr{background:#fff;border:1px solid var(--line);border-radius:14px;margin:0 0 10px;padding:6px 14px;box-shadow:var(--shadow)}
+  .table-wrap tbody tr:hover td{background:transparent}
+  .table-wrap td{border:0;padding:6px 0;display:flex;justify-content:space-between;align-items:center;gap:14px;text-align:right;word-break:break-word}
+  .table-wrap td[data-label]::before{content:attr(data-label);color:var(--muted);font-size:12px;font-weight:700;text-align:left;flex:none}
+  .table-wrap td:first-child{padding-top:8px}
+  tr.grp td:first-child{border-left:0}tr.grp{border-left:5px solid var(--gc,#f0c36d)}
+  .table-wrap tr.grp-head{background:#fff7e0;border-color:#f0c36d}.table-wrap tr.grp-head td{display:block;text-align:left;border:0}
+  /* 操作しやすく */
+  .chips{flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px;margin:0 -12px;padding-left:12px;padding-right:12px;scrollbar-width:none}
+  .chips::-webkit-scrollbar{display:none}.chip-btn{white-space:nowrap;flex:none;padding:8px 14px}
+  .btn,.select,.input{min-height:42px}.btn.sm{min-height:36px}
+  .geo-grid{gap:12px}
+  .card-head{flex-wrap:wrap}
+  .grid.g3,.grid.g2{grid-template-columns:1fr}
+  .drawer{border-radius:0}.drawer-head{padding-top:calc(14px + env(safe-area-inset-top))}
+  h1{font-size:18px}
+}

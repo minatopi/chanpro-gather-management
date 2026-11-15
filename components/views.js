@@ -136,6 +136,26 @@ function UserIps({ user, go }) {
   );
 }
 
+function DevicesSection({ user, go }) {
+  const { toast } = useUI();
+  const { data, loading, error } = useLoad(() => api(`/api/admin/user-devices?userId=${user.id}`), [user.id]);
+  return (
+    <section>
+      <div className="sec-title">使った端末・名前の検索</div>
+      <div className="row" style={{ marginBottom: 10 }}><button className="btn sm" onClick={() => go("users", { q: user.username, mode: "similar" })}>似た名前のユーザーを探す</button></div>
+      {loading && !data ? <div className="sub">読み込み中…</div> : error ? <ErrorBox text={error} /> : !data?.devices?.length ? <div className="sub">端末の記録がありません</div> : (
+        <div className="stack">{data.devices.map((d) => {
+          const info = d.device_info && typeof d.device_info === "object" ? [d.device_info.platform, d.device_info.language, d.device_info.screen].filter(Boolean).join(" / ") : "";
+          return (
+            <div key={d.device_hash} className="check" style={{ alignItems: "flex-start" }}>
+              <div style={{ minWidth: 0 }}><div className="mono" style={{ cursor: "pointer" }} title="クリックでコピー" onClick={() => { navigator.clipboard?.writeText(d.device_hash); toast("端末ハッシュをコピーしました"); }}>{String(d.device_hash).slice(0, 20)}…</div><span>{info || "端末情報なし"} ・ 最終 {ago(d.last_login_at)}</span></div>
+              <button className="btn sm" onClick={() => go("users", { q: d.device_hash, mode: "device" })}>同じ端末</button>
+            </div>);
+        })}</div>)}
+    </section>
+  );
+}
+
 function UserPanel({ user: initial, onClose, onChanged, go }) {
   const { toast, confirm } = useUI();
   const [u, setU] = useState(initial); const [busy, setBusy] = useState(false);
@@ -177,27 +197,36 @@ function UserPanel({ user: initial, onClose, onChanged, go }) {
         <div className="row"><Badge tone="blue">{(u.points ?? 0).toLocaleString()} pt</Badge><Badge tone="gray">BAN {u.ban_count || 0}回</Badge></div>
       </section>
       <UserIps user={u} go={go} />
+      <DevicesSection user={u} go={go} />
       <PostHogSection user={u} go={go} />
     </Drawer>
   );
 }
 
+const SEARCH_MODES = [["auto", "自動判定"], ["name", "ユーザー名"], ["similar", "似た名前"], ["ip", "IP"], ["device", "端末"], ["id", "ID"]];
+const MODE_HINT = { auto: "ユーザー名・IP・端末ハッシュ・IDで検索(自動判定)", name: "ユーザー名の一部で検索", similar: "似た名前を探す(表記ゆれ・似た文字も対象)", ip: "IPで検索(203.0.113.10 / 203.0.113. で前方一致)", device: "端末ハッシュ(先頭8文字以上)で検索", id: "ユーザーIDで検索" };
+const MODE_NOTE = { similar: "似た名前のユーザー", ip: "このIPを使ったことのあるユーザー(ログイン履歴・過去30日のAxiomログ)", device: "この端末を使ったことのあるユーザー", id: "IDが一致するユーザー" };
+const MATCH_JA = { exact: "完全一致", partial: "部分一致", log: "ログ一致", last: "最終IP", list: "IP履歴", device: "端末一致", id: "ID一致" };
+
 export function Users({ go, params }) {
   const [text, setText] = useState(params?.q || ""); const q = useDebounced(text);
   const [filter, setFilter] = useState(params?.filter || "all"); const [sel, setSel] = useState(null);
-  const { data, loading, error, reload } = useLoad(() => api(`/api/admin/users?q=${encodeURIComponent(q)}&filter=${filter}`), [q, filter]);
+  const [mode, setMode] = useState(params?.mode || "auto");
+  const { data, loading, error, reload } = useLoad(() => api(`/api/admin/users?q=${encodeURIComponent(q)}&filter=${filter}&mode=${mode}`), [q, filter, mode]);
   const users = data?.users || [];
   const gmap = new Map((data?.groups || []).map((g) => [g.id, g]));
+  const modeSeg = <div className="chips">{SEARCH_MODES.map(([k, l]) => <button key={k} className={`chip-btn ${mode === k ? "on" : ""}`} onClick={() => setMode(k)}>{l}</button>)}</div>;
   const GROUP_COLORS = ["#f0a43a", "#6d4aff", "#12a150", "#2f5bff", "#d946a8", "#0ea5b7"];
   const items = []; const seenG = new Set();
   for (const u of users) { if (u.group && !seenG.has(u.group)) { seenG.add(u.group); items.push({ head: gmap.get(u.group) }); } items.push({ u }); }
   return <>
     <div className="row">
-      <SearchBox value={text} onChange={setText} placeholder="ユーザー名またはIPで検索" />
+      <SearchBox value={text} onChange={setText} placeholder={MODE_HINT[mode]} />
+      {modeSeg}
       <Seg value={filter} onChange={setFilter} options={[["all", "すべて"], ["verified", "公式"], ["staff", "管理者"], ["banned", "BAN中"]]} />
     </div>
     <ErrorBox text={error} />
-    {data?.ipSearch && <div className="notice info"><Icon name="info" /><span>IP <span className="mono">{data.ipSearch}</span> を使ったことのあるユーザー(ログイン履歴・過去30日のAxiomログ)</span></div>}
+    {data?.search && data.mode && data.mode !== "name" && <div className="notice info"><Icon name="info" /><span>{MODE_NOTE[data.mode]}: <span className="mono">{data.search}</span>({users.length}件)</span></div>}
     {loading && !data ? <Skeleton rows={6} /> : !users.length ? <div className="card"><Empty icon="users" text="該当するユーザーがいません" /></div> : (
       <div className="table-wrap"><table>
         <thead><tr><th>ユーザー</th><th>権限</th><th>状態</th><th className="hide-sm" style={{ textAlign: "right" }}>ポイント</th></tr></thead>
@@ -205,7 +234,7 @@ export function Users({ go, params }) {
           <tr key={"g" + i} className="grp-head"><td colSpan={4}><div className="row" style={{ gap: 8 }}><Badge tone="amber">裏垢の可能性</Badge><b>{it.head.members}件のアカウントが関連しています</b><span className="sub">{(it.head.reasons || []).join(" / ")}{it.head.strong ? "" : "(IPのみ・確度低)"}</span></div></td></tr>
         ) : ((u) => (
           <tr key={u.id} className={"click" + (u.group ? " grp" : "")} style={u.group ? { "--gc": GROUP_COLORS[(u.group - 1) % GROUP_COLORS.length] } : undefined} onClick={() => setSel(u)}>
-            <td><div className="row" style={{ gap: 12, flexWrap: "nowrap" }}><Avatar name={u.username} src={u.icon_url} /><b>{u.username}</b>{u.related && <Badge tone="gray">関連(検索外)</Badge>}{u.matched?.map((m) => <Badge key={m} tone="violet">{m === "log" ? "ログ一致" : m === "last" ? "最終IP" : "IP履歴"}</Badge>)}{u.verified && <span style={{ color: "var(--brand)", display: "inline-flex" }} title="公式バッジ"><Icon name="badge" size={16} /></span>}</div></td>
+            <td><div className="row" style={{ gap: 12, flexWrap: "nowrap" }}><Avatar name={u.username} src={u.icon_url} /><b>{u.username}</b>{u.related && <Badge tone="gray">関連(検索外)</Badge>}{u.score != null && <Badge tone="violet">類似度 {Math.round(u.score * 100)}%</Badge>}{u.matched?.filter((m) => m !== "similar").map((m) => <Badge key={m} tone={m === "exact" ? "green" : "violet"}>{MATCH_JA[m] || m}</Badge>)}{u.verified && <span style={{ color: "var(--brand)", display: "inline-flex" }} title="公式バッジ"><Icon name="badge" size={16} /></span>}</div></td>
             <td><Badge tone={u.role === "developer" ? "violet" : u.role === "admin" ? "blue" : "gray"}>{u.role}</Badge></td>
             <td>{isBanned(u) ? <Badge tone="red" dot>BAN中 {remaining(u.ban_until).text}</Badge> : <Badge tone="green" dot>通常</Badge>}</td>
             <td className="hide-sm" style={{ textAlign: "right" }}>{(u.points ?? 0).toLocaleString()}</td>

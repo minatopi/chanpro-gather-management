@@ -24,6 +24,7 @@ const shade=t=>`rgb(${lerp(238,47,t)},${lerp(242,91,t)},${lerp(255,255,t)})`;
 export function GeoPanel({rows,mode,onOpenUser}){
   const [land,setLand]=useState(null),[landErr,setLandErr]=useState(""),[sel,setSel]=useState(null),[zoomLevel,setZoomLevel]=useState(1);
   const svgRef=useRef(null),gRef=useRef(null),zoomRef=useRef(null),kRef=useRef(1);
+  const [dot,setDot]=useState(true),[size,setSize]=useState(6);
 
   useEffect(()=>{
     let off=false;
@@ -35,7 +36,7 @@ export function GeoPanel({rows,mode,onOpenUser}){
   useEffect(()=>{
     if(!svgRef.current||!gRef.current)return;
     const svg=select(svgRef.current);
-    const z=zoom().scaleExtent([1,10])
+    const z=zoom().scaleExtent([1,40])
       // スマホ: 拡大前の1本指ドラッグはページのスクロールに使う(2本指ピンチ/拡大後のドラッグで地図を操作)
       .filter(e=>{
         if(e.type==="touchstart"||e.type==="touchmove")return (e.touches?.length||0)>1||kRef.current>1;
@@ -103,6 +104,15 @@ export function GeoPanel({rows,mode,onOpenUser}){
   },[data,sel]);
 
   const resetZoom=()=>svgRef.current&&zoomRef.current&&select(svgRef.current).call(zoomRef.current.transform,zoomIdentity);
+  const REGIONS=[["全国",null],["北海道",[139.3,41.3,145.9,45.6]],["東北",[138.8,36.8,142.2,41.6]],["関東",[138.5,34.8,140.9,37.1]],["中部",[135.8,34.5,139.2,38.6]],["近畿",[134.0,33.4,136.9,35.8]],["中国・四国",[130.8,32.6,135.0,35.7]],["九州",[129.3,30.8,132.1,34.0]],["沖縄",[122.8,24.0,131.5,27.2]]];
+  const jumpTo=box=>{
+    if(!svgRef.current||!zoomRef.current)return;
+    if(!box)return resetZoom();
+    const a=projection([box[0],box[3]]),b=projection([box[2],box[1]]);if(!a||!b)return;
+    const dx=Math.abs(b[0]-a[0])||1,dy=Math.abs(b[1]-a[1])||1,k=Math.max(1,Math.min(40,0.9*Math.min(W/dx,H[mode]/dy)));
+    const cx=(a[0]+b[0])/2,cy=(a[1]+b[1])/2;
+    select(svgRef.current).call(zoomRef.current.transform,zoomIdentity.translate(W/2-k*cx,H[mode]/2-k*cy).scale(k));
+  };
   const changeZoom=factor=>svgRef.current&&zoomRef.current&&select(svgRef.current).call(zoomRef.current.scaleBy,factor);
 
   if(!rows.length)return <div className="card"><Empty icon="globe" text="位置情報つきのアクセスがまだありません(PostHogのGeoIPが有効か確認してください)"/></div>;
@@ -113,22 +123,23 @@ export function GeoPanel({rows,mode,onOpenUser}){
     {landErr&&<div className="notice warn"><Icon name="alert"/>地図の背景データを取得できなかったため、位置の点だけを表示しています({landErr})</div>}
     <div className="geo-grid">
       <div className="card" style={{padding:10,overflow:"hidden"}}>
+        {mode==="japan"&&<div className="chips" style={{marginBottom:8}}>{REGIONS.map(([l,b])=><button key={l} className="chip-btn" onClick={()=>jumpTo(b)}>{l}</button>)}</div>}
         <svg ref={svgRef} viewBox={`0 0 ${W} ${H[mode]}`} style={{width:"100%",height:"auto",display:"block",background:"#f4f7fd",borderRadius:10,cursor:"grab",touchAction:zoomLevel>1?"none":"pan-y"}}>
           <g ref={gRef}>
             {mode==="world"&&<path d={path({type:"Sphere"})} fill="#eef3fb" stroke="#dfe6f3"/>}
             {land?.features?.map((f,i)=>{
               const n=data.byIdx.get(i)||0,label=featName(f,mode);
-              return <path key={i} d={path(f)} fill={n?shade(Math.sqrt(n/data.maxIdx)):"#ffffff"} stroke="#cfd6e4" strokeWidth={0.6} style={{cursor:n?"pointer":"default"}} onClick={()=>n&&setSel(sel===label?null:label)}>
+              return <path key={i} d={path(f)} fill={n?shade(Math.sqrt(n/data.maxIdx)):"#ffffff"} stroke="#cfd6e4" strokeWidth={0.6} vectorEffect="non-scaling-stroke" style={{cursor:n?"pointer":"default"}} onClick={()=>n&&setSel(sel===label?null:label)}>
                 <title>{label}{n?`: ${n}アクセス`:""}</title>
               </path>;
             })}
-            {data.points.map(p=>{
+            {dot&&data.points.map(p=>{
               const xy=projection([p.lon,p.lat]);if(!xy)return null;
-              const r=4+Math.sqrt(p.n/maxPt)*13;
+              const r=size*(0.4+Math.sqrt(p.n/maxPt)*0.8)/Math.pow(zoomLevel,0.85); // ズームすると丸が小さくなり、細かい位置が見える
               const names=[...p.users.values()].map(u=>u.username||"匿名").slice(0,8).join(", ");
-              return <circle key={p.key} cx={xy[0]} cy={xy[1]} r={r} fill="rgba(220,47,63,.55)" stroke="#fff" strokeWidth={1.5} style={{cursor:"pointer"}} onClick={()=>setSel(sel===p.label?null:p.label)}>
+              return <g key={p.key}><circle cx={xy[0]} cy={xy[1]} r={r} fill="rgba(220,47,63,.5)" stroke="#fff" strokeWidth={1} vectorEffect="non-scaling-stroke" style={{cursor:"pointer"}} onClick={()=>setSel(sel===p.label?null:p.label)}>
                 <title>{[p.label,p.city].filter(Boolean).join(" / ")} — {p.n}アクセス / {p.users.size}人{"\n"}{names}</title>
-              </circle>;
+              </circle>{zoomLevel>=3.5&&<text x={xy[0]+r+1.5/zoomLevel} y={xy[1]+3/zoomLevel} fontSize={11/zoomLevel} fill="#3b4250" style={{pointerEvents:"none"}}>{p.city||p.label}</text>}</g>;
             })}
           </g>
         </svg>
@@ -138,6 +149,9 @@ export function GeoPanel({rows,mode,onOpenUser}){
             <button className="btn sm" onClick={()=>changeZoom(1/1.4)} title="縮小"><Icon name="minus"/></button>
             <button className="btn sm" onClick={resetZoom}><Icon name="maximize"/>リセット</button>
             <span className="sub">{Math.round(zoomLevel*100)}%</span>
+            <span className="sub" style={{marginLeft:8}}>丸</span>
+            {[["小",4],["中",6],["大",10]].map(([l,v])=><button key={l} className={`chip-btn ${size===v?"on":""}`} style={{padding:"3px 10px"}} onClick={()=>setSize(v)}>{l}</button>)}
+            <button className={`chip-btn ${dot?"on":""}`} style={{padding:"3px 10px"}} onClick={()=>setDot(!dot)}>{dot?"丸を隠す":"丸を表示"}</button>
           </div>
           {sel&&<button className="btn sm" onClick={()=>setSel(null)}>「{sel}」の絞り込みを解除</button>}
         </div>
