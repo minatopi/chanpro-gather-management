@@ -8,6 +8,7 @@ export const CATEGORIES = {
   security: { label: "セキュリティ", tone: "red" },
   error: { label: "エラー", tone: "red" },
   status: { label: "ステータス", tone: "amber" },
+  ai: { label: "AI利用", tone: "violet" },
   other: { label: "その他", tone: "gray" },
 };
 
@@ -27,6 +28,7 @@ const FIELD_JA = { icon_url: "アイコン", cover_url: "カバー画像", profi
 export const REASON_JA = { user_not_found: "ユーザー名が存在しない", wrong_password: "パスワードが違う", account_banned: "アカウントがBAN中", device_banned: "端末がBAN中", ip_banned: "IPがBAN中", rate_limited: "アクセス集中による制限", login_disabled: "ログイン停止中", admin_login_disabled: "管理者ログイン停止中", register_disabled: "新規作成停止中", banned_device_account: "BANされたアカウントの端末", device_limit: "端末のアカウント作成上限", username_taken: "ユーザー名が使用済み", invalid_input: "入力内容が不正", feature_disabled: "機能が停止中", error: "その他のエラー" };
 const SETTING_JA = { login_enabled: "ログイン", register_enabled: "新規アカウント作成", admin_login_enabled: "管理者ログイン", server_enabled: "サーバー全体" };
 const OP_JA = { ban: "ユーザーBAN", "admin-user-update": "ユーザー情報の更新", "ip-ban": "IP BAN", "ip-unban": "IP BAN解除" };
+const AI_ACTION_JA = { chat: "チャット", image: "画像生成", upload: "画像の送信", list: "会話一覧", history: "会話履歴", delete: "会話の削除", settings: "設定の取得", "save-settings": "プロンプトの保存" };
 const ROLE_JA = { user: "一般", admin: "管理者", developer: "開発者" };
 
 const tablesOf = (r) => { let x = r.reads; if (typeof x === "string") { try { x = JSON.parse(x); } catch { x = null; } } return Array.isArray(x) ? [...new Set(x.map((i) => i?.table).filter(Boolean))].join("・") : ""; };
@@ -34,7 +36,7 @@ const fieldsJa = (f) => String(f || "").split(",").filter(Boolean).map((k) => FI
 const kb = (n) => (Number(n) >= 1024 ? `${(Number(n) / 1024).toFixed(1)}KB` : `${Number(n) || 0}B`);
 
 export function describeLog(r) {
-  const who = r.username ? `「${r.username}」` : "未ログインのユーザー";
+  const who = r.username ? `「${r.username}」` : r.user_id ? `ユーザーID ${String(r.user_id).slice(0, 8)}…` : "未ログインのユーザー";
   const t = r.type; const out = (cat, text, extra = {}) => ({ cat, text, ...extra });
   switch (t) {
     // ---- 認証 ----
@@ -77,6 +79,9 @@ export function describeLog(r) {
     case "api_error": return out("error", `${who}の「${ACTION_JA[r.action] || r.action || "操作"}」でエラーが発生しました`, { reason: r.message, tone: "red", detail: `HTTP ${r.status}` });
     // ---- ステータス ----
     case "feature_status": return out("status", `機能「${r.feature}」を「${r.status}」として記録しました`, { detail: r.message, tone: { 停止: "red", 復旧: "green", 不具合: "amber", 調査中: "blue", メンテナンス: "violet" }[r.status] });
+    // ---- AI(ai.js) ----
+    case "ai_api": { const a = AI_ACTION_JA[r.action] || r.action || "操作"; const ok = Number(r.http_status) < 400; return out("ai", ok ? `${who}がAI「${a}」を利用しました` : `${who}のAI「${a}」が失敗しました`, { tone: ok ? undefined : "red", reason: ok ? "" : r.error_message, detail: [r.message_length != null && `質問${r.message_length}文字`, r.answer_length != null && `回答${r.answer_length}文字`, r.has_image && "画像つき", r.prompt_length != null && `指示${r.prompt_length}文字`, !ok && `HTTP ${r.http_status}`].filter(Boolean).join(" / ") }); }
+    case "ai_image_upload": return out("ai", r.kind === "generated" ? `${who}がAIで画像を生成しました` : `${who}がAIに画像を送りました`, { detail: [r.size_bytes && kb(r.size_bytes), r.prompt].filter(Boolean).join(" / ") });
     // ---- 管理サイト ----
     case "admin_login_success": return out("admin", "管理サイトにログインしました", { tone: "green" });
     case "admin_login_failed": return out("security", "管理サイトのログインに失敗しました", { tone: "red" });

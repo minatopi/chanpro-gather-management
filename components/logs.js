@@ -3,13 +3,14 @@ import { useEffect, useMemo, useState } from "react";
 import { api, fmtFull, ago, Icon, Badge, Empty, Skeleton, ErrorBox, SearchBox, Switch, Seg, useLoad, useDebounced } from "./ui";
 import { CATEGORIES, describeLog, metaOf } from "./logtext";
 
-const KINDS = [["all", "すべて"], ["login", "認証"], ["read", "読み込み"], ["change", "変更"], ["account", "アカウント"], ["admin", "管理操作"], ["ip", "セキュリティ"], ["error", "エラー"], ["status", "ステータス"]];
-const KIND_HINT = { all: "読み込みログを除いたすべて", login: "ログイン・新規作成の成功/失敗(失敗理由つき)", read: "データの読み込み(DB読み込み・閲覧など)", change: "投稿・いいね・DMなど、ユーザーが行った変更", account: "新規作成・アカウント情報の更新・アカウント削除", admin: "管理サイトのログイン・設定変更・BANなどの管理操作", ip: "BAN・アクセス集中・機能停止による拒否", error: "APIのエラー", status: "機能の停止・復旧の記録" };
+const KINDS = [["all", "すべて"], ["login", "認証"], ["read", "読み込み"], ["change", "変更"], ["account", "アカウント"], ["admin", "管理操作"], ["ip", "セキュリティ"], ["error", "エラー"], ["status", "ステータス"], ["ai", "AI利用"]];
+const KIND_HINT = { all: "読み込みログを除いたすべて", login: "ログイン・新規作成の成功/失敗(失敗理由つき)", read: "データの読み込み(DB読み込み・閲覧など)", change: "投稿・いいね・DMなど、ユーザーが行った変更", account: "新規作成・アカウント情報の更新・アカウント削除", admin: "管理サイトのログイン・設定変更・BANなどの管理操作", ip: "BAN・アクセス集中・機能停止による拒否", error: "APIのエラー", status: "機能の停止・復旧の記録", ai: "ユーザー向けAI(チャット・画像生成・画像送信)の利用とエラー" };
 const isIp = (t) => /^(\d{1,3}\.){3}\d{1,3}$/.test(t) || (t.includes(":") && /^[0-9a-f:.]+$/i.test(t));
 const day = (t) => { const d = new Date(t), n = new Date(); const same = d.toDateString() === n.toDateString(); const y = new Date(n - 86400000).toDateString() === d.toDateString(); return same ? "今日" : y ? "昨日" : d.toLocaleDateString("ja-JP", { month: "long", day: "numeric", weekday: "short" }); };
 
 function Line({ r }) {
   const [open, setOpen] = useState(false);
+  const img = [r.url, r.image_url].find((x) => typeof x === "string" && /^https?:\/\//i.test(x));
   const d = describeLog(r); const cat = CATEGORIES[d.cat] || CATEGORIES.other; const meta = metaOf(r);
   return (
     <div className={`logline ${open ? "open" : ""}`} onClick={() => setOpen(!open)}>
@@ -17,6 +18,7 @@ function Line({ r }) {
       <div className="logmain">
         <div className={`logtext ${d.tone ? "t-" + d.tone : ""}`}>{d.text}{d.reason && <span className="logreason">{d.reason}</span>}</div>
         {(d.detail || meta.length > 0) && <div className="logmeta">{[d.detail, ...meta].filter(Boolean).join("　・　")}</div>}
+        {img && <a href={img} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}><img className="logthumb" src={img} alt="" loading="lazy" referrerPolicy="no-referrer" /></a>}
         {open && <pre className="lograw">{JSON.stringify(Object.fromEntries(Object.entries(r).filter(([k]) => !["_rowId", "_sysTime"].includes(k))), null, 2)}</pre>}
       </div>
       <div className="logtime" title={fmtFull(r._time)}>{new Date(r._time).toLocaleTimeString("ja-JP")}<span>{ago(r._time)}</span></div>
